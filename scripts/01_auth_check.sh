@@ -15,7 +15,7 @@ echo "== venv =="
 # shellcheck disable=SC1091
 source .venv/bin/activate
 python -m pip install -q --upgrade pip
-python -m pip install -q kaggle "huggingface_hub[cli]"
+python -m pip install -q kaggle huggingface_hub
 
 echo "== kaggle credentials =="
 if [ ! -f "$HOME/.kaggle/kaggle.json" ]; then

@@ -40,3 +40,28 @@ truncating mismatched F0 tracks, since truncation would favour systems that
 predict shorter durations; and a comparison with no commonly-voiced frames
 returns NaN rather than 0.0, so an empty comparison cannot look like a perfect
 score.
+
+## 2026-09-14 — access verified, corpora sized
+
+Kaggle: `kaggle.json` present at mode 600, live `kernels list` authenticated as
+`klewikkanel`. Hugging Face: authenticated as `Klewik`. GitHub:
+`Klewik-Kanel/indic-tts-bench`, `main` tracking `origin`.
+
+Corpus trial passes, 50 utterances each, zero decode failures:
+
+| corpus | repo | rows | mean | estimated total | rate |
+|---|---|---|---|---|---|
+| Hindi | SPRINGLab/IndicTTS-Hindi | 11,825 | 6.70 s | 21.99 h | 48 kHz |
+| Marathi | SPRINGLab/IndicTTS_Marathi | 10,939 | 7.56 s | 22.97 h | 48 kHz |
+
+Hours estimated two independent ways from the 50-utterance sample; both agree.
+The estimate assumes the first 50 rows are representative, which is exactly the
+assumption the full export will test, so these figures are provisional.
+
+Both corpora carry only `audio`, `text` and `gender`. There is no speaker id,
+so "single speaker" can only mean "single gender", and the control arm needs
+Hindi and Marathi matched on it. The 50-row samples show gender `0` throughout,
+which tells us nothing about the distribution.
+
+Source is 48 kHz, not the 22.05 kHz assumed in plan v2. Sampling-rate policy is
+an open decision.
