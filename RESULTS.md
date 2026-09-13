@@ -270,3 +270,48 @@ Rare phones are recorded as a known weakness: Marathi has ɽʱ once, z once and
 q twice, which are embedding rows with almost no gradient. Setting
 `merge_nukta=True` for Marathi is the obvious mitigation and is left as a
 decision for the training configuration rather than being applied silently here.
+
+## 2026-09-14 — run configs, and forced alignment dropped
+
+`src/train/config.py` generates every run as a YAML file in `configs/`. The run
+is the unit of reproducibility: a results row carries its run id and config
+hash, so any number in the paper traces back to exact settings.
+
+Two assertions run at generation time. `assert_budget_matched` requires every
+acoustic-model run to share max_steps, batch_frames, lr, schedule, warmup,
+precision and grad clip; if it ever fails the comparison is between
+architectures AND budgets and the results table means nothing. A second check
+refuses two runs whose settings hash identically under different ids.
+
+**That second check immediately paid for itself.** The plan had 19 runs. The
+ladder's 9 h rung was a second copy of the main run: r01 and r07 trained the
+same architecture on the same data under the same budget, and would have cost
+10 GPU-hours to produce a number we already had. The duplication was invisible
+while run_id was inside the hash, because that made two identical runs look
+distinct. run_id is now excluded, the ladder starts at 5 h, and the plan is
+**17 runs and 136 GPU-hours**, down from 19 and 146.
+
+**Forced alignment is dropped. Alignment is learned inside every model.**
+
+Three reasons, in order of importance.
+
+It was an uncontrolled asymmetry. VITS and Matcha learn alignment internally
+through monotonic alignment search; giving FastSpeech 2 externally supervised
+MFA durations would hand one architecture information the others never see,
+inside a comparison whose entire subject is the architecture.
+
+It was asymmetric across languages as well. MFA publishes a pretrained Hindi
+acoustic model but none for Marathi, so the Marathi arm would have used an
+aligner trained on 9 h of its own data while Hindi used one trained on far
+more. That difference would have sat directly inside the control comparison.
+
+And it cannot run here regardless: `montreal-forced-aligner` pip-installs, but
+its Kaldi bindings (`_kalpy`) have no aarch64 Linux wheel and fail to build,
+since MFA ships through conda. Verified, not assumed.
+
+FastSpeech 2 therefore uses an internal unsupervised aligner of the kind in
+Badlani et al., "One TTS Alignment to Rule Them All" (ICASSP 2022), which is
+what current implementations do anyway. Limitation to report rather than hide:
+an internal aligner is generally weaker than MFA at very small data sizes, so
+the lowest ladder rungs may be affected more than the top ones. That is a
+property of the ladder to measure, not a reason to reintroduce the asymmetry.
