@@ -1,0 +1,29 @@
+# credentials never belong in this repo or in the shared folder
+.secrets/
+*.key
+kaggle.json
+.env
+
+# data and model artefacts are large and reproducible
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+!data/raw/dataset_profile.json
+*.wav
+*.mp3
+*.flac
+*.parquet
+*.ckpt
+*.pth
+*.pt
+checkpoints/
+
+# results: keep tables and figures, drop bulk per-utterance dumps from git
+results/raw/*.csv
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
