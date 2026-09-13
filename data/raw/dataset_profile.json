@@ -9,24 +9,25 @@
     "text_column": "text",
     "speaker_column": "gender",
     "n_rows_in_split": 11825,
-    "n_exported": 50,
+    "n_exported": 11825,
     "n_decode_failures": 0,
     "sampling_rates": {
-      "48000": 50
+      "48000": 11825
     },
     "speakers": {
-      "0": 50
+      "0": 5983,
+      "1": 5842
     },
-    "total_hours": 0.093,
+    "total_hours": 26.226,
     "duration_seconds": {
-      "min": 2.706,
-      "p50": 6.357,
-      "p95": 10.872,
-      "max": 12.602,
-      "mean": 6.716
+      "min": 1.504,
+      "p50": 6.784,
+      "p95": 15.766,
+      "max": 127.693,
+      "mean": 7.984
     },
     "metadata_tsv": "data/raw/hindi/metadata.tsv",
-    "partial": true
+    "partial": false
   },
   "marathi": {
     "repo": "SPRINGLab/IndicTTS_Marathi",
@@ -38,23 +39,24 @@
     "text_column": "text",
     "speaker_column": "gender",
     "n_rows_in_split": 10939,
-    "n_exported": 50,
+    "n_exported": 10939,
     "n_decode_failures": 0,
     "sampling_rates": {
-      "48000": 50
+      "48000": 10939
     },
     "speakers": {
-      "0": 50
+      "0": 5362,
+      "1": 5577
     },
-    "total_hours": 0.105,
+    "total_hours": 22.372,
     "duration_seconds": {
-      "min": 3.702,
-      "p50": 7.078,
-      "p95": 13.201,
-      "max": 13.522,
-      "mean": 7.561
+      "min": 2.119,
+      "p50": 7.015,
+      "p95": 12.017,
+      "max": 25.826,
+      "mean": 7.363
     },
     "metadata_tsv": "data/raw/marathi/metadata.tsv",
-    "partial": true
+    "partial": false
   }
 }
