@@ -1,0 +1,31 @@
+{
+  "hindi": {
+    "repo": "SPRINGLab/IndicTTS-Hindi",
+    "columns": [
+      "audio",
+      "text",
+      "gender"
+    ],
+    "text_column": "text",
+    "speaker_column": "gender",
+    "n_rows_in_split": 11825,
+    "n_exported": 50,
+    "n_decode_failures": 0,
+    "sampling_rates": {
+      "48000": 50
+    },
+    "speakers": {
+      "0": 50
+    },
+    "total_hours": 0.093,
+    "duration_seconds": {
+      "min": 2.706,
+      "p50": 6.357,
+      "p95": 10.872,
+      "max": 12.602,
+      "mean": 6.716
+    },
+    "metadata_tsv": "data/raw/hindi/metadata.tsv",
+    "partial": true
+  }
+}
