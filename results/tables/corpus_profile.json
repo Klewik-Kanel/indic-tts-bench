@@ -1,0 +1,154 @@
+{
+  "hindi": {
+    "n_utterances": 11825,
+    "hours_total": 26.226,
+    "sampling_rates": {
+      "48000": 11825
+    },
+    "speakers": {
+      "0": {
+        "n_utterances": 5983,
+        "hours_raw": 13.096,
+        "seconds": {
+          "mean": 7.88,
+          "median": 6.61,
+          "min": 1.5,
+          "p95": 15.68,
+          "max": 127.69
+        },
+        "hours_after_filter": {
+          "1-12s": 9.047,
+          "1-15s": 10.729,
+          "1-20s": 11.839,
+          "2-15s": 10.711
+        }
+      },
+      "1": {
+        "n_utterances": 5842,
+        "hours_raw": 13.129,
+        "seconds": {
+          "mean": 8.09,
+          "median": 6.96,
+          "min": 1.51,
+          "p95": 15.85,
+          "max": 119.9
+        },
+        "hours_after_filter": {
+          "1-12s": 8.962,
+          "1-15s": 10.887,
+          "1-20s": 11.932,
+          "2-15s": 10.866
+        }
+      }
+    },
+    "transcript_qa": {
+      "chars_per_second": {
+        "median": 12.52,
+        "p1": 9.16,
+        "p99": 15.77
+      },
+      "suspicious_low": [],
+      "suspicious_high": [],
+      "n_suspicious": 0,
+      "text_chars": {
+        "mean": 100,
+        "median": 86,
+        "max": 1600
+      }
+    },
+    "pitch": {
+      "0": {
+        "median_f0_hz": 198.9,
+        "p10": 173.1,
+        "p90": 236.2,
+        "n_files": 25,
+        "inferred_gender": "female",
+        "note": "inferred from median F0, not a corpus label"
+      },
+      "1": {
+        "median_f0_hz": 108.8,
+        "p10": 98.1,
+        "p90": 126.5,
+        "n_files": 25,
+        "inferred_gender": "male",
+        "note": "inferred from median F0, not a corpus label"
+      }
+    }
+  },
+  "marathi": {
+    "n_utterances": 10939,
+    "hours_total": 22.372,
+    "sampling_rates": {
+      "48000": 10939
+    },
+    "speakers": {
+      "0": {
+        "n_utterances": 5362,
+        "hours_raw": 11.493,
+        "seconds": {
+          "mean": 7.72,
+          "median": 7.39,
+          "min": 2.12,
+          "p95": 12.53,
+          "max": 21.47
+        },
+        "hours_after_filter": {
+          "1-12s": 10.092,
+          "1-15s": 11.194,
+          "1-20s": 11.481,
+          "2-15s": 11.194
+        }
+      },
+      "1": {
+        "n_utterances": 5577,
+        "hours_raw": 10.879,
+        "seconds": {
+          "mean": 7.02,
+          "median": 6.66,
+          "min": 2.18,
+          "p95": 11.42,
+          "max": 25.83
+        },
+        "hours_after_filter": {
+          "1-12s": 10.182,
+          "1-15s": 10.795,
+          "1-20s": 10.866,
+          "2-15s": 10.795
+        }
+      }
+    },
+    "transcript_qa": {
+      "chars_per_second": {
+        "median": 9.1,
+        "p1": 6.64,
+        "p99": 11.7
+      },
+      "suspicious_low": [],
+      "suspicious_high": [],
+      "n_suspicious": 0,
+      "text_chars": {
+        "mean": 67,
+        "median": 64,
+        "max": 172
+      }
+    },
+    "pitch": {
+      "0": {
+        "median_f0_hz": 237.2,
+        "p10": 221.5,
+        "p90": 249.3,
+        "n_files": 25,
+        "inferred_gender": "female",
+        "note": "inferred from median F0, not a corpus label"
+      },
+      "1": {
+        "median_f0_hz": 125.7,
+        "p10": 114.1,
+        "p90": 139.1,
+        "n_files": 25,
+        "inferred_gender": "male",
+        "note": "inferred from median F0, not a corpus label"
+      }
+    }
+  }
+}

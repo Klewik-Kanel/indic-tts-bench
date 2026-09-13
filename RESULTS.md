@@ -89,3 +89,56 @@ through the same converter, so the symbols come from the inventory and only the
 judgement is human. Round-trip verified on two simulated sheets: 46 resolved,
 1 flagged variable, 2 with no inherent schwa to elicit, 1 slot-level
 disagreement detected.
+
+## 2026-09-14 — full export and corpus profile
+
+Command: `python -m src.data.profile`, output `results/tables/corpus_profile.json`.
+
+| | utts | hours | speakers | suspicious transcripts |
+|---|---|---|---|---|
+| Hindi | 11,825 | 26.23 | 2 | 0 |
+| Marathi | 10,939 | 22.37 | 2 | 0 |
+
+**The 50-row extrapolation was wrong for Hindi.** Estimated 21.99 h, actual
+26.23 h, 19% low. Marathi estimated 22.97 h against 22.37 h actual, 2.6% high.
+The first 50 rows were not representative in Hindi. Recorded because it is the
+reason those figures were labelled provisional, and the reason a full pass runs
+before any number is used.
+
+**Speaker identity recovered.** The corpora label speakers 0 and 1 with no key.
+Median F0 over 25 sampled files each separates them cleanly and identically in
+both languages:
+
+| | speaker 0 | speaker 1 |
+|---|---|---|
+| Hindi | 198.9 Hz, likely female | 108.8 Hz, likely male |
+| Marathi | 237.2 Hz, likely female | 125.7 Hz, likely male |
+
+Inferred from pitch, not from a corpus label, and recorded as such.
+
+**Length filter: 1 to 15 s, not 1 to 12 s.** At 1-12 s no single Hindi speaker
+reaches the 10 h top rung (9.05 h and 8.96 h). At 1-15 s every candidate
+speaker clears it:
+
+| | 1-12s | 1-15s | 1-20s |
+|---|---|---|---|
+| Hindi female | 9.05 | 10.73 | 11.84 |
+| Hindi male | 8.96 | 10.89 | 11.93 |
+| Marathi female | 10.09 | 11.19 | 11.48 |
+| Marathi male | 10.18 | 10.80 | 10.87 |
+
+15 s at 22.05 kHz with hop 256 is 1,292 mel frames, comfortable for all three
+architectures. The Hindi tail is long (max 127.7 s) but legitimate: the 127.7 s
+item carries 1,600 characters, which is 12.5 characters per second, the corpus
+median. Long reads, not broken rows.
+
+**Transcript QA: clean.** Characters per second is tightly distributed in both
+corpora (Hindi median 12.52, p1 9.16, p99 15.77; Marathi median 9.10, p1 6.64,
+p99 11.70) and nothing falls outside 0.4x to 2.0x the median. Zero transcripts
+look misaligned with their audio in either language.
+
+**Speaker choice: male, speaker 1, in both languages.** Hours are equivalent
+either way (10.89 and 10.80 male, 10.73 and 11.19 female). The male speakers
+sit 17 Hz apart across the two languages against 38 Hz for the female pair, so
+matching on male leaves less acoustic difference between the Hindi and Marathi
+arms that has nothing to do with schwa deletion. Provisional pending review.
