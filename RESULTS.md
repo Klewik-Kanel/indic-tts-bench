@@ -315,3 +315,31 @@ what current implementations do anyway. Limitation to report rather than hide:
 an internal aligner is generally weaker than MFA at very small data sizes, so
 the lowest ladder rungs may be affected more than the top ones. That is a
 property of the ladder to measure, not a reason to reintroduce the asymmetry.
+
+## 2026-09-14 — Kaggle smoke test built
+
+`src/kaggle/job.py smoke` generates a job directory; `scripts/05_kaggle.sh`
+pushes, polls and fetches it from a native terminal. Claude cannot reach
+kaggle.com, so it builds the job and reads the result, and the round trip runs
+on the user's machine.
+
+The smoke test exists because every assumption behind the 136 GPU-hour plan is
+still unverified. It checks, for a few minutes of quota:
+
+- **A GPU is actually attached.** An account without phone verification runs
+  CPU-only and says nothing. On a 12-hour run that failure looks identical to a
+  job that never finishes.
+- **Which GPU, and how fast.** A fixed fp16 matmul, so T4 and P100 sessions are
+  comparable and the step budget comes from a measurement rather than a guess.
+- **Internet and Hugging Face authentication** from inside the notebook.
+- **A checkpoint survives a round trip.** Push 1 MiB to the Hub, delete it
+  locally, pull it back, compare SHA-256. Resume-from-checkpoint is what caps
+  the cost of a killed session at N steps instead of a whole run, and an
+  untested resume path is not a safety net.
+
+Each stage reports independently and the result is written to
+`smoke_result.json` in the kernel output, so a partial failure says which part
+failed rather than just failing.
+
+One manual step: the notebook reads `HF_TOKEN` from Kaggle Secrets, and secrets
+are attached through the web UI, not the API. First push, attach, push again.
