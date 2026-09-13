@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Run this in YOUR OWN macOS Terminal, not inside Claude's workspace.
 # Verifies that the Kaggle and Hugging Face credentials are in place and live.
-set -euo pipefail
+set -uo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p logs
+exec > >(tee logs/auth.log) 2>&1
+echo "=== $(date) ==="
 
 echo "== python =="
 python3 -V
 
 echo "== venv =="
-cd "$(dirname "$0")/.."
 [ -d .venv ] || python3 -m venv .venv
 # shellcheck disable=SC1091
 source .venv/bin/activate

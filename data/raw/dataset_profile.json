@@ -27,5 +27,34 @@
     },
     "metadata_tsv": "data/raw/hindi/metadata.tsv",
     "partial": true
+  },
+  "marathi": {
+    "repo": "SPRINGLab/IndicTTS_Marathi",
+    "columns": [
+      "audio",
+      "text",
+      "gender"
+    ],
+    "text_column": "text",
+    "speaker_column": "gender",
+    "n_rows_in_split": 10939,
+    "n_exported": 50,
+    "n_decode_failures": 0,
+    "sampling_rates": {
+      "48000": 50
+    },
+    "speakers": {
+      "0": 50
+    },
+    "total_hours": 0.105,
+    "duration_seconds": {
+      "min": 3.702,
+      "p50": 7.078,
+      "p95": 13.201,
+      "max": 13.522,
+      "mean": 7.561
+    },
+    "metadata_tsv": "data/raw/marathi/metadata.tsv",
+    "partial": true
   }
 }
