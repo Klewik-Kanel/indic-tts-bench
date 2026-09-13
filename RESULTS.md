@@ -142,3 +142,26 @@ either way (10.89 and 10.80 male, 10.73 and 11.19 female). The male speakers
 sit 17 Hz apart across the two languages against 38 Hz for the female pair, so
 matching on male leaves less acoustic difference between the Hindi and Marathi
 arms that has nothing to do with schwa deletion. Provisional pending review.
+
+## 2026-09-14 — elicitation sheet redesigned after a pilot misread
+
+The first reader of the sheet answered the wrong question, and did so in a way
+that looked like a valid answer. On `नमकीन  n[1]m[2]kiin[3]` they read the
+numbered blanks as asking whether a vowel exists anywhere in that syllable,
+so slot 3 was nearly marked Y because of the written ii, and slot 1 was marked
+N despite the word being pronounced namkeen with an audible a.
+
+Both errors are silent: nothing in the data would have revealed them, and with
+two or three speakers reading it the same way the resulting gold set would have
+been confidently wrong.
+
+Fixes: the candidate vowel is now spelled out in place as a numbered
+parenthesised (a), so `n(a1)m(a2)kiin(a3)` asks a concrete question about a
+specific sound; the instructions state that every plainly written vowel is not
+in question; and three worked examples with answers sit at the top of both the
+HTML and the TSV, including the exact नमकीन case that was misread.
+
+Recorded because it is a reminder that an instrument needs piloting on a real
+reader before it collects data, not just unit tests.
+
+**Speaker choice confirmed: male, speaker 1, in both languages.**
