@@ -165,3 +165,20 @@ Recorded because it is a reminder that an instrument needs piloting on a real
 reader before it collects data, not just unit tests.
 
 **Speaker choice confirmed: male, speaker 1, in both languages.**
+
+## 2026-09-14 — worked examples were leaking test answers
+
+The three worked examples on the sheet were घर, नमकीन and कमल. All three are
+items in the 49. The sheet was therefore handing every participant the correct
+answers to three of the words it was about to test them on, which would have
+made those items unscoreable, and nothing in the merge would have flagged it.
+
+Replaced with कपड़ा, बर्तन and पानी, none of which appear in the set. The three
+now cover a deletion, a retention, and a word with no slots at all.
+`check_examples_are_outside` runs at sheet-generation time and refuses to write
+a sheet whose examples appear in the set, so this cannot recur silently.
+
+Second point of procedure: the project owner has now seen worked answers for
+नमकीन and समझना while learning to read the sheet, so they cannot serve as one
+of the scored speakers. Coordinating rather than participating is the cleaner
+role in any case.

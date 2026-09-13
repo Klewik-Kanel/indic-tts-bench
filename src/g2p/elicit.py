@@ -64,9 +64,10 @@ def romanise(phone: str) -> str:
 def slots(word: str) -> tuple[list[int], str]:
     """Return (segment indices of inherent schwas, a display string).
 
-    The display string writes every written sound and puts a numbered blank
-    where an unwritten schwa might or might not be pronounced, for example
-    n[1]mkiin. The speaker fills each numbered blank with yes or no.
+    The display string writes every sound the orthography actually specifies
+    and inserts a numbered, parenthesised candidate vowel wherever an unwritten
+    schwa might or might not be pronounced: n(a1)m(a2)kiin(a3). The speaker
+    answers Y, N or V for each numbered (a).
     """
     segs: list[Segment] = word_to_segments(normalize(word))
     idxs: list[int] = []
@@ -74,7 +75,12 @@ def slots(word: str) -> tuple[list[int], str]:
     for i, s in enumerate(segs):
         if s.inherent and s.phone == "ə":
             idxs.append(i)
-            parts.append(f"[{len(idxs)}]")
+            # Write the candidate vowel out as a literal (a), numbered. An
+            # earlier version printed a bare [1], which readers took to mean
+            # "is a vowel written anywhere in this syllable" and answered about
+            # the matra beside it instead of the unwritten schwa. Spelling the
+            # candidate sound makes the question concrete: do you say this a.
+            parts.append(f"(a{len(idxs)})")
         else:
             parts.append(romanise(s.phone))
     return idxs, "".join(parts)
@@ -94,13 +100,26 @@ def load_set(path: pathlib.Path) -> list[dict[str, str]]:
 
 INSTRUCTIONS = (
     "Read each word aloud the way you normally say it, at a normal "
-    "conversational pace. Each numbered blank marks a place where Devanagari "
-    "writes a consonant with no vowel sign, so the word may or may not have a "
-    "short 'a' sound there. For every numbered blank write Y if you pronounce "
-    "a vowel there and N if you do not. If you genuinely say it both ways, "
-    "write V for variable. Do not consult a dictionary and do not discuss the "
-    "words with anyone else who is filling in this sheet."
+    "conversational pace. In the reading aid, every vowel written plainly "
+    "(aa, ii, e, ai, o, au and so on) is already part of the word and is "
+    "always pronounced. Ignore those. The only thing in question is each "
+    "numbered (a): a short 'a' sound that Devanagari does not write, which "
+    "may or may not be pronounced at exactly that position. For each one "
+    "write Y if you say that a, N if you do not, and V if you genuinely say "
+    "the word both ways. Do not consult a dictionary and do not discuss the "
+    "words with anyone else filling in a sheet."
 )
+
+# Worked examples belong on the sheet itself. Without them the numbered slots
+# get read as "is there a vowel somewhere in this syllable", which is a
+# different question and silently corrupts every answer.
+EXAMPLES = [
+    ("घर", "gh(a1)r(a2)", "You say ghar.", "a1 = Y, a2 = N"),
+    ("नमकीन", "n(a1)m(a2)kiin(a3)", "You say namkeen.",
+     "a1 = Y (the a in nam), a2 = N (not na-ma-keen), a3 = N. "
+     "The ii is the written matra and is not in question."),
+    ("कमल", "k(a1)m(a2)l(a3)", "You say kamal.", "a1 = Y, a2 = Y, a3 = N"),
+]
 
 
 def write_sheet(rows: list[dict[str, str]], out_dir: pathlib.Path) -> None:
@@ -116,6 +135,9 @@ def write_sheet(rows: list[dict[str, str]], out_dir: pathlib.Path) -> None:
 
     with tsv.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh, delimiter="\t")
+        w.writerow(["# " + INSTRUCTIONS])
+        for ew, eaid, esay, eans in EXAMPLES:
+            w.writerow([f"# example: {ew}  {eaid}  {esay}  {eans}"])
         w.writerow(["speaker_id", "", "", ""] + [""] * max_slots)
         w.writerow(["word", "reading_aid", "n_slots"]
                    + [f"slot{i + 1}" for i in range(max_slots)])
@@ -134,10 +156,21 @@ def write_sheet(rows: list[dict[str, str]], out_dir: pathlib.Path) -> None:
         "<style>body{font:15px/1.5 system-ui;max-width:820px;margin:24px auto;"
         "padding:0 16px}table{border-collapse:collapse;width:100%}"
         "td,th{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}"
-        ".dev{font-size:21px}.aid{font-family:ui-monospace,monospace;color:#555}"
+        ".dev{font-size:21px;white-space:nowrap}"
+        ".aid{font-family:ui-monospace,monospace;color:#333;white-space:nowrap}"
+        "table.ex td{background:#fbfcfd;vertical-align:top}"
+        "h2{font-size:16px;margin-top:26px}"
         "input{width:34px;text-align:center;font-size:15px}"
         "p{background:#f4f6f8;padding:12px 14px;border-left:3px solid #17494d}</style>"
         f"<h1>Schwa elicitation sheet</h1><p>{html.escape(INSTRUCTIONS)}</p>"
+        "<h2>Worked examples</h2><table class=ex><tbody>"
+        + "".join(
+            f"<tr><td class=dev>{html.escape(w_)}</td>"
+            f"<td class=aid>{html.escape(aid)}</td>"
+            f"<td>{html.escape(say)}<br><b>{html.escape(ans)}</b></td></tr>"
+            for w_, aid, say, ans in EXAMPLES
+        )
+        + "</tbody></table>"
         "<p>Speaker id: ____________  Date: ____________</p>"
         f"<table><thead><tr><th>Word</th><th>Reading aid</th>"
         + "".join(f"<th>{i + 1}</th>" for i in range(max_slots))

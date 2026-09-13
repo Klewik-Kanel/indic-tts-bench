@@ -1,51 +1,55 @@
+# Read each word aloud the way you normally say it, at a normal conversational pace. In the reading aid, every vowel written plainly (aa, ii, e, ai, o, au and so on) is already part of the word and is always pronounced. Ignore those. The only thing in question is each numbered (a): a short 'a' sound that Devanagari does not write, which may or may not be pronounced at exactly that position. For each one write Y if you say that a, N if you do not, and V if you genuinely say the word both ways. Do not consult a dictionary and do not discuss the words with anyone else filling in a sheet.
+# example: घर  gh(a1)r(a2)  You say ghar.  a1 = Y, a2 = N
+# example: नमकीन  n(a1)m(a2)kiin(a3)  You say namkeen.  a1 = Y (the a in nam), a2 = N (not na-ma-keen), a3 = N. The ii is the written matra and is not in question.
+# example: कमल  k(a1)m(a2)l(a3)  You say kamal.  a1 = Y, a2 = Y, a3 = N
 speaker_id							
 word	reading_aid	n_slots	slot1	slot2	slot3	slot4
-नमकीन	n[1]m[2]kiin[3]	3				-
-रचना	r[1]ch[2]naa	2			-	-
-लड़का	l[1]R[2]kaa	2			-	-
-आदमी	aad[1]mii	1		-	-	-
-नौकरी	nauk[1]rii	1		-	-	-
-समझना	s[1]m[2]jh[3]naa	3				-
-बचपन	b[1]ch[2]p[3]n[4]	4				
-दरवाज़ा	d[1]r[2]vaazaa	2			-	-
-मुसलमान	mus[1]l[2]maan[3]	3				-
-पहलवान	p[1]h[2]l[3]vaan[4]	4				
-चमकना	ch[1]m[2]k[3]naa	3				-
-भटकना	bh[1]T[2]k[3]naa	3				-
-लिखना	likh[1]naa	1		-	-	-
-पढ़ना	p[1]Rh[2]naa	2			-	-
-करना	k[1]r[2]naa	2			-	-
-चलना	ch[1]l[2]naa	2			-	-
-समझदार	s[1]m[2]jh[3]daar[4]	4				
-जानवर	jaan[1]v[2]r[3]	3				-
-सुनना	sun[1]naa	1		-	-	-
-मानना	maan[1]naa	1		-	-	-
-नमक	n[1]m[2]k[3]	3				-
-कमल	k[1]m[2]l[3]	3				-
-घर	gh[1]r[2]	2			-	-
-सड़क	s[1]R[2]k[3]	3				-
-मकान	m[1]kaan[2]	2			-	-
-अलग	al[1]g[2]	2			-	-
-पर्वत	p[1]rv[2]t[3]	3				-
-कल्पना	k[1]lp[2]naa	2			-	-
-शब्द	sh[1]bd[2]	2			-	-
-राष्ट्र	raaShTr[1]	1		-	-	-
-न	n[1]	1		-	-	-
-कल	k[1]l[2]	2			-	-
-दिन	din[1]	1		-	-	-
-हाथ	haath[1]	1		-	-	-
-मंदिर	m[1]ndir[2]	2			-	-
-अंक	angk[1]	1		-	-	-
-पंजाब	p[1]nyjaab[2]	2			-	-
+नमकीन	n(a1)m(a2)kiin(a3)	3				-
+रचना	r(a1)ch(a2)naa	2			-	-
+लड़का	l(a1)R(a2)kaa	2			-	-
+आदमी	aad(a1)mii	1		-	-	-
+नौकरी	nauk(a1)rii	1		-	-	-
+समझना	s(a1)m(a2)jh(a3)naa	3				-
+बचपन	b(a1)ch(a2)p(a3)n(a4)	4				
+दरवाज़ा	d(a1)r(a2)vaazaa	2			-	-
+मुसलमान	mus(a1)l(a2)maan(a3)	3				-
+पहलवान	p(a1)h(a2)l(a3)vaan(a4)	4				
+चमकना	ch(a1)m(a2)k(a3)naa	3				-
+भटकना	bh(a1)T(a2)k(a3)naa	3				-
+लिखना	likh(a1)naa	1		-	-	-
+पढ़ना	p(a1)Rh(a2)naa	2			-	-
+करना	k(a1)r(a2)naa	2			-	-
+चलना	ch(a1)l(a2)naa	2			-	-
+समझदार	s(a1)m(a2)jh(a3)daar(a4)	4				
+जानवर	jaan(a1)v(a2)r(a3)	3				-
+सुनना	sun(a1)naa	1		-	-	-
+मानना	maan(a1)naa	1		-	-	-
+नमक	n(a1)m(a2)k(a3)	3				-
+कमल	k(a1)m(a2)l(a3)	3				-
+घर	gh(a1)r(a2)	2			-	-
+सड़क	s(a1)R(a2)k(a3)	3				-
+मकान	m(a1)kaan(a2)	2			-	-
+अलग	al(a1)g(a2)	2			-	-
+पर्वत	p(a1)rv(a2)t(a3)	3				-
+कल्पना	k(a1)lp(a2)naa	2			-	-
+शब्द	sh(a1)bd(a2)	2			-	-
+राष्ट्र	raaShTr(a1)	1		-	-	-
+न	n(a1)	1		-	-	-
+कल	k(a1)l(a2)	2			-	-
+दिन	din(a1)	1		-	-	-
+हाथ	haath(a1)	1		-	-	-
+मंदिर	m(a1)ndir(a2)	2			-	-
+अंक	angk(a1)	1		-	-	-
+पंजाब	p(a1)nyjaab(a2)	2			-	-
 माँ	maa~	0	-	-	-	-
 हाँ	haa~	0	-	-	-	-
-गंगा	g[1]nggaa	1		-	-	-
-ज़रूर	z[1]ruur[2]	2			-	-
-क़रीब	q[1]riib[2]	2			-	-
-फ़ैसला	fais[1]laa	1		-	-	-
-ख़बर	kh[1]b[2]r[3]	3				-
-राम	raam[1]	1		-	-	-
-कृष्ण	kriShN[1]	1		-	-	-
-धर्म	dh[1]rm[2]	2			-	-
-सत्य	s[1]ty[2]	2			-	-
-जनसंख्या	j[1]n[2]s[3]ngkhyaa	3				-
+गंगा	g(a1)nggaa	1		-	-	-
+ज़रूर	z(a1)ruur(a2)	2			-	-
+क़रीब	q(a1)riib(a2)	2			-	-
+फ़ैसला	fais(a1)laa	1		-	-	-
+ख़बर	kh(a1)b(a2)r(a3)	3				-
+राम	raam(a1)	1		-	-	-
+कृष्ण	kriShN(a1)	1		-	-	-
+धर्म	dh(a1)rm(a2)	2			-	-
+सत्य	s(a1)ty(a2)	2			-	-
+जनसंख्या	j(a1)n(a2)s(a3)ngkhyaa	3				-
