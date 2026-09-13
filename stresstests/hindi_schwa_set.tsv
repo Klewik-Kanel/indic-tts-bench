@@ -1,0 +1,89 @@
+# Hindi schwa-deletion stress-test set
+#
+# Columns: word, gold_ipa, category, validated, note
+#
+# gold_ipa uses the inventory in src/g2p/phoneset.py, space separated.
+#
+# VALIDATION STATUS. Every gold form below is drawn from standard descriptions
+# of Hindi phonology and is marked validated=no. None of them has been checked
+# against a native speaker or a pronunciation dictionary yet. The front-end
+# accuracy number reported in the paper must come from the validated subset
+# only, so this file is not usable as evidence until that pass is done. Flip
+# the column to yes item by item, not in bulk.
+#
+# CIRCULARITY WARNING. The rule implementation and these gold forms were
+# written by the same author in the same sitting, so the provisional accuracy
+# figure (--include-unvalidated) is close to meaningless: it mostly measures
+# whether the author was self-consistent. It currently reads 100%, which is
+# evidence of circularity rather than of a good front end. The number becomes
+# real only once an independent speaker has fixed the gold forms without
+# seeing the rule output.
+#
+# Categories:
+#   applies    the V C _ C V rule fires and the deletion is correct
+#   blocked    the rule's context matches but speakers retain the schwa;
+#              these are the rule's known failure mode and the reason a
+#              lexicon exists. Populate from elicitation, not from memory.
+#   final      word-final inherent schwa
+#   mono       monosyllable; the only vowel must survive
+#   cluster    explicit virama cluster interacts with deletion
+#   nasal      anusvara or chandrabindu interacts with the surrounding vowels
+#   loan       Perso-Arabic or English borrowing, often with nukta letters
+#
+word	gold_ipa	category	validated	note
+नमकीन	n ə m k iː n	applies	no	canonical textbook case
+रचना	r ə tʃ n aː	applies	no
+लड़का	l ə ɽ k aː	applies	no	nukta flap
+आदमी	aː d̪ m iː	applies	no	initial independent vowel
+नौकरी	n ɔː k r iː	applies	no
+समझना	s ə m ə dʒʱ n aː	applies	no	only the second schwa deletes
+बचपन	b ə tʃ p ə n	applies	no	suffix -पन
+दरवाज़ा	d̪ ə r ʋ aː z aː	loan	no	nukta ज़
+मुसलमान	m ʊ s ə l m aː n	loan	no
+पहलवान	p ə ɦ ə l ʋ aː n	applies	no	schwa before ɦ survives
+चमकना	tʃ ə m ə k n aː	applies	no	infinitive -ना
+भटकना	bʱ ə ʈ ə k n aː	applies	no
+लिखना	l ɪ kʰ n aː	applies	no
+पढ़ना	p ə ɽʱ n aː	applies	no	nukta ढ़
+करना	k ə r n aː	applies	no
+चलना	tʃ ə l n aː	applies	no
+समझदार	s ə m ə dʒʱ d̪ aː r	applies	no
+जानवर	dʒ aː n ʋ ə r	applies	no
+सुनना	s ʊ n n aː	applies	no	geminate result
+मानना	m aː n n aː	applies	no	geminate result
+नमक	n ə m ə k	final	no	medial context fails, only final deletes
+कमल	k ə m ə l	final	no
+घर	ɡʱ ə r	final	no
+सड़क	s ə ɽ ə k	final	no
+मकान	m ə k aː n	final	no
+अलग	ə l ə ɡ	final	no	initial independent vowel
+पर्वत	p ə r ʋ ə t̪	cluster	no	virama blocks the left context
+कल्पना	k ə l p ə n aː	cluster	no	rule must not delete after the cluster
+शब्द	ʃ ə b d̪	cluster	no
+राष्ट्र	r aː ʂ ʈ r	cluster	no	heavy final cluster; final schwa contested in careful speech
+न	n ə	mono	no	only vowel must survive
+कल	k ə l	mono	no
+दिन	d̪ ɪ n	mono	no
+हाथ	ɦ aː t̪ʰ	mono	no
+मंदिर	m ə n d̪ ɪ r	nasal	no	anusvara to dental nasal
+अंक	ə ŋ k	nasal	no	anusvara to velar nasal
+पंजाब	p ə ɲ dʒ aː b	nasal	no	anusvara to palatal nasal
+माँ	m aː̃	nasal	no	chandrabindu nasalises the vowel
+हाँ	ɦ aː̃	nasal	no
+गंगा	ɡ ə ŋ ɡ aː	nasal	no
+ज़रूर	z ə r uː r	loan	no	nukta ज़
+क़रीब	q ə r iː b	loan	no	nukta क़; merges to k for many speakers
+फ़ैसला	f ɛː s l aː	loan	no	nukta फ़; medial deletion applies
+ख़बर	x ə b ə r	loan	no	nukta ख़
+#
+# --- contested items: the rule's failure mode ------------------------------
+# These are candidates where the literature reports variation or where the
+# rule's context matches but retention is reported. They are the heart of the
+# stress test and they are the items most in need of elicitation. Do not score
+# against these until a native speaker has fixed the gold form.
+#
+राम	r aː m	blocked	no	tatsama; final schwa retained in recitation registers
+कृष्ण	k ri ʂ ɳ	blocked	no	final schwa retention varies by register
+धर्म	d̪ʱ ə r m	blocked	no	check the final cluster realisation
+सत्य	s ə t̪ j	blocked	no	final य behaviour is contested
+जनसंख्या	dʒ ə n s ə ŋ kʰ j aː	blocked	no	compound boundary; rule may delete across it
