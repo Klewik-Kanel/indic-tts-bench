@@ -10,6 +10,11 @@ data/interim/*
 data/processed/*
 !data/**/.gitkeep
 !data/raw/dataset_profile.json
+# The split definitions are the reproducibility record and are small:
+# they let anyone verify the frozen split without the audio.
+!data/processed/**/*.tsv
+!data/processed/**/SPLITS.lock
+!data/interim/**/manifest.tsv
 *.wav
 *.mp3
 *.flac

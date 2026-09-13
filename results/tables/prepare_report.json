@@ -1,0 +1,40 @@
+{
+  "hindi": {
+    "language": "hindi",
+    "speaker": "1",
+    "candidates_after_filter": 5485,
+    "written": 188,
+    "skipped": 5297,
+    "too_quiet": 0,
+    "peak_scaled": 0,
+    "hours": 0.452,
+    "master_sr": 22050,
+    "vits_sr": 16000,
+    "target_lufs": -23.0,
+    "trim_top_db": 40.0,
+    "duration_window_s": [
+      1.0,
+      15.0
+    ],
+    "elapsed_s": 6.5
+  },
+  "marathi": {
+    "language": "marathi",
+    "speaker": "1",
+    "candidates_after_filter": 5559,
+    "written": 1526,
+    "skipped": 4033,
+    "too_quiet": 0,
+    "peak_scaled": 0,
+    "hours": 2.714,
+    "master_sr": 22050,
+    "vits_sr": 16000,
+    "target_lufs": -23.0,
+    "trim_top_db": 40.0,
+    "duration_window_s": [
+      1.0,
+      15.0
+    ],
+    "elapsed_s": 42.1
+  }
+}

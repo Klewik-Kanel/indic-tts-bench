@@ -182,3 +182,43 @@ Second point of procedure: the project owner has now seen worked answers for
 नमकीन and समझना while learning to read the sheet, so they cannot serve as one
 of the scored speakers. Coordinating rather than participating is the cleaner
 role in any case.
+
+## 2026-09-14 — standardisation and frozen splits
+
+`src/data/prepare.py`, male speaker only, both languages:
+
+| | utterances | hours | peak-limited | gain range |
+|---|---|---|---|---|
+| Hindi | 5,485 | 10.289 | 1 | -8.7 to +2.1 dB |
+| Marathi | 5,559 | 9.884 | 0 | -9.2 to +2.8 dB |
+
+Verified on a sample: both rates land at exactly -23.00 LUFS, the 22.05 kHz and
+16 kHz copies agree on duration to under a millisecond, peaks stay under 0.995,
+and the 50 ms edge padding is present. The peak guard fired once in Hindi, so
+it is not dead code.
+
+**Silence trimming cost more than plan v2 assumed.** Hindi went from 10.887 h
+to 10.289 h, a 5.5% loss; Marathi from 10.795 h to 9.884 h, 8.4%. Marathi
+carried noticeably more leading and trailing silence.
+
+**The ladder's top rung is 9 h, not 10 h.** After trimming and after the frozen
+test and dev sets, training audio is 9.53 h in Hindi and 9.16 h in Marathi. 9 h
+is the largest round figure both clear. Matching the rungs across languages
+matters more than a round 10: an unmatched top rung would put a data-quantity
+difference inside the control comparison, which is the one place it must not be.
+
+`src/data/splits.py`, frozen and checksummed:
+
+| | test | dev | train | 9h | 5h | 1h | 30min | 10min |
+|---|---|---|---|---|---|---|---|---|
+| Hindi | 300 (0.579 h) | 100 | 5,085 (9.525 h) | 4,793 | 2,668 | 541 | 265 | 86 |
+| Marathi | 300 (0.542 h) | 100 | 5,159 (9.160 h) | 5,071 | 2,810 | 562 | 279 | 90 |
+
+Structural checks, all passing: every ladder rung is a strict superset of the
+one below it; test, dev and train are pairwise disjoint; every rung lies inside
+train; and a rebuild reproduces `test.tsv` byte for byte, because membership
+comes from a salted SHA-256 of the utterance id rather than a seeded shuffle of
+whatever order the manifest happened to be written in.
+
+`SPLITS.lock` records the salt and a checksum per file, and `--verify` re-hashes
+them. Rebuilding without `--force` is refused.
