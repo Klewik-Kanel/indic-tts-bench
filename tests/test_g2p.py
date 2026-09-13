@@ -183,3 +183,44 @@ def test_nukta_letters_survive_composition_exclusion() -> None:
     assert normalize(decomposed) == normalize(precomposed) == precomposed
     assert phones("ल" + decomposed + "का") == "l ə ɽ k aː"
     assert phones("ल" + precomposed + "का") == "l ə ɽ k aː"
+
+
+# --- punctuation must not change the word ----------------------------------
+
+@pytest.mark.parametrize("base", ["घर", "नमक", "कमल", "नमकीन", "समझना",
+                                  "शब्द", "मंदिर", "लड़का", "रचना"])
+@pytest.mark.parametrize("mark", [",", ".", "?", "!"])
+def test_attached_punctuation_does_not_alter_the_phones(base: str, mark: str) -> None:
+    """Regression, and a bad one.
+
+    Punctuation is kept as a prosody token, but if it stays attached to the
+    word through the schwa stage it breaks the rule twice over: a trailing
+    comma means the word-final schwa is no longer word-final, so it survives,
+    and its survival supplies the right-hand vowel that lets the schwa to its
+    left delete. नमक is /nəmək/; नमक, came out /nəmkə/, a different word.
+
+    16.5% of Hindi word tokens and 14.9% of Marathi carry punctuation, and the
+    corruption would have hit the phoneme arm only, so the phoneme-vs-grapheme
+    comparison would have been measuring this bug.
+    """
+    assert HI.phonemize_word(base + mark) == HI.phonemize_word(base) + [mark]
+    assert MR.phonemize_word(base + mark) == MR.phonemize_word(base) + [mark]
+
+
+def test_punctuation_is_a_declared_symbol() -> None:
+    inv = HI.inventory()
+    for mark in [",", ".", "?", "!"]:
+        assert mark in inv, "punctuation is emitted, so it needs an embedding row"
+
+
+def test_numbers_expand_rather_than_reaching_the_phone_sequence() -> None:
+    g = G2P.for_language("marathi")
+    phones = g.phonemize("500 रुपये")
+    assert not any(p.isdigit() for p in phones)
+    assert g.unexpanded_numbers == []
+
+
+def test_an_untabulated_number_is_flagged_not_guessed() -> None:
+    g = G2P.for_language("marathi")
+    g.phonemize("37 दिवस")
+    assert g.unexpanded_numbers == ["37"], "a guessed number word would be a silent error"

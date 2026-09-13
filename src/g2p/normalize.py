@@ -36,13 +36,34 @@ ZERO_WIDTH = "​‌‍﻿­"
 DANDA = "।"
 DOUBLE_DANDA = "॥"
 
+# Every mark folds into the four the model actually gets an embedding for.
+# Quotation marks carry no prosody of their own and are dropped; a hyphen
+# inside a compound (बार-बार, पुढे-मागे) is a word boundary, not a pause.
 PUNCT_MAP: dict[str, str] = {
     DANDA: ".", DOUBLE_DANDA: ".",
-    "‘": "'", "’": "'", "“": '"', "”": '"',
+    "‘": "", "’": "", "“": "", "”": "", "'": "", '"': "",
     "–": ",", "—": ",", "…": ".",
+    ";": ",", ":": ",", "-": " ",
 }
 
-KEEP_PUNCT = set(".,?!;:'\"-")
+KEEP_PUNCT = set(".,?!")
+
+# Corpus spellings repaired before anything else looks at them. आ + candra-e
+# and अ + candra-o are keyboard slips for ऑ, seen in आॅन and अॉस्कर. RRA is a
+# Marathi letter that only ever appears in the rya cluster (करणाऱ्या), where
+# plain र is the standard spelling.
+TYPO_MAP: dict[str, str] = {
+    "आॅ": "ऑ",     # आॅ -> ऑ
+    "अॉ": "ऑ",     # अॉ -> ऑ
+    "ऱ": "र",           # ऱ -> र
+    "\u0950": "\u0913\u092e\u094d",   # ॐ -> ओम्, a ligature for the syllable
+    # Southern Devanagari short vowels, which neither Hindi nor Marathi
+    # distinguishes. Seven tokens across both corpora; they fold onto the
+    # long counterparts rather than becoming unknown symbols.
+    "\u0912": "\u0913",           # ऒ short O -> ओ
+    "\u090e": "\u090f",           # ऎ short E -> ए
+    "\u0944": "\u0943",           # ॄ vocalic RR matra -> ृ
+}
 
 # Unicode general categories to keep. Mn and Mc matter enormously here: every
 # Devanagari matra, the virama, anusvara and chandrabindu are combining marks,
@@ -62,6 +83,38 @@ def compose_nukta(text: str) -> str:
     for decomposed, composed in NUKTA_COMPOSE.items():
         text = text.replace(decomposed, composed)
     return text
+
+
+def repair_typos(text: str) -> str:
+    for src, dst in TYPO_MAP.items():
+        text = text.replace(src, dst)
+    return text
+
+
+def strip_orphan_nukta(text: str) -> str:
+    """Drop a nukta sitting on a consonant that has no nukta form.
+
+    The corpora contain nine Hindi tokens where the nukta landed on the wrong
+    letter (व़क्त for वक़्त, गल़ती for ग़लती). Left in place the mark becomes an
+    unknown symbol and, worse, breaks the consonant-plus-matra parse of the
+    following character. Dropping it yields the plain consonant, which is the
+    pronunciation most speakers use for these words anyway.
+    """
+    out: list[str] = []
+    for ch in text:
+        if ch == NUKTA:
+            continue          # composable nukta was already joined in NFC step
+        out.append(ch)
+    return "".join(out)
+
+
+def colon_to_visarga(text: str) -> str:
+    """A colon between Devanagari letters is a typed visarga.
+
+    Marathi स्वत:च is स्वतःच. A colon elsewhere is punctuation and is dropped
+    by the punctuation fold.
+    """
+    return re.sub(r"(?<=[\u0900-\u097F]):", "\u0903", text)
 
 
 def map_punctuation(text: str) -> str:
@@ -93,6 +146,9 @@ def normalize(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     text = strip_zero_width(text)
     text = compose_nukta(text)
+    text = strip_orphan_nukta(text)
+    text = repair_typos(text)
+    text = colon_to_visarga(text)
     text = devanagari_digits_to_ascii(text)
     text = map_punctuation(text)
     return collapse_whitespace(text)

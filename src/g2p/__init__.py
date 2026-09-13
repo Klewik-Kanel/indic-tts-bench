@@ -17,8 +17,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import normalize as _norm
+from .numbers import expand as _expand_numbers
 from .devanagari import Segment, word_to_segments
-from .phoneset import WORD_BOUNDARY, build_inventory
+from .phoneset import PUNCTUATION, WORD_BOUNDARY, build_inventory
 from .schwa import HINDI, MARATHI, NO_DELETION, SchwaConfig, delete_schwas
 
 __all__ = [
@@ -48,6 +49,9 @@ class G2P:
     schwa: SchwaConfig
     merge_nukta: bool = False
     lexicon: dict[str, list[str]] = field(default_factory=dict)
+    # Digit strings the number expander could not handle, collected rather
+    # than dropped so a coverage run can count them.
+    unexpanded_numbers: list[str] = field(default_factory=list)
 
     @classmethod
     def for_language(
@@ -71,19 +75,48 @@ class G2P:
     # -- phoneme path -------------------------------------------------------
 
     def phonemize_word(self, word: str) -> list[str]:
-        """One orthographic word to phones. Lexicon wins over rules."""
+        """One orthographic word to phones. Lexicon wins over rules.
+
+        Punctuation is peeled off the edges before the schwa stage and put
+        back afterwards. Leaving it attached breaks the rule in two ways at
+        once: a trailing comma means the word-final schwa is no longer final,
+        so it survives, and its survival changes the context of the schwa to
+        its left, which can then delete. नमक is /nəmək/ but नमक, came out as
+        /nəmkə/ — a different word. 16.5% of Hindi word tokens and 14.9% of
+        Marathi carry punctuation, and the damage would have landed on the
+        phoneme arm alone, which is one half of the comparison this study
+        exists to make.
+        """
         word = _norm.normalize(word)
         if not word:
             return []
-        if word in self.lexicon:
-            return list(self.lexicon[word])
-        segs = word_to_segments(word, merge_nukta=self.merge_nukta)
+
+        lead, core, trail = [], word, []
+        while core and core[0] in PUNCTUATION:
+            lead.append(core[0])
+            core = core[1:]
+        while core and core[-1] in PUNCTUATION:
+            trail.insert(0, core[-1])
+            core = core[:-1]
+        if not core:
+            return lead + trail
+
+        if core in self.lexicon:
+            return lead + list(self.lexicon[core]) + trail
+        segs = word_to_segments(core, merge_nukta=self.merge_nukta)
         survivors, _ = delete_schwas(segs, self.schwa)
-        return [s.phone for s in survivors if s.phone]
+        return lead + [s.phone for s in survivors if s.phone] + trail
 
     def phonemize(self, text: str) -> list[str]:
-        """Sentence to phones, with explicit word boundaries."""
-        text = _norm.normalize(text)
+        """Sentence to phones, with explicit word boundaries.
+
+        Digits are expanded to number words first. A digit reaching the phone
+        sequence would become an embedding row trained on a handful of
+        examples, and the model would have no way to pronounce it.
+        """
+        text, unexpanded = _expand_numbers(_norm.normalize(text), self.language)
+        if unexpanded:
+            self.unexpanded_numbers.extend(unexpanded)
         out: list[str] = []
         for i, word in enumerate(text.split()):
             phones = self.phonemize_word(word)

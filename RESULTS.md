@@ -222,3 +222,51 @@ whatever order the manifest happened to be written in.
 
 `SPLITS.lock` records the salt and a checksum per file, and `--verify` re-hashes
 them. Rebuilding without `--force` is refused.
+
+## 2026-09-14 — G2P coverage over the full corpora
+
+`python -m src.data.g2p_coverage`, all 11,044 transcripts. Both languages now
+reach **zero unknown symbols**. The first pass did not: 4.1% of Hindi phone
+tokens and 2.7% of Marathi had no mapping.
+
+**The serious find was a bug I introduced.** Keeping punctuation as a prosody
+token left it attached to the word through the schwa stage, which broke the
+rule twice over. A trailing comma means the word-final schwa is no longer
+word-final, so it survives; and its survival supplies the right-hand vowel that
+lets the schwa to its left delete. नमक is /nəmək/ but नमक, came out /nəmkə/, a
+different word. 16.5% of Hindi word tokens and 14.9% of Marathi carry
+punctuation, and the corruption would have landed on the phoneme arm alone,
+so the phoneme-versus-grapheme comparison would have been measuring the bug.
+Punctuation is now peeled off the edges before the schwa stage and restored
+after, with a parametrised invariance test over nine words and four marks in
+both languages.
+
+Other fixes, each found by running over real text rather than the 49-word set:
+
+- 9 Hindi tokens carried a nukta on a consonant with no nukta form (व़क्त for
+  वक़्त). The stray mark also broke the parse of the following character.
+- ऱ RRA, 199 Marathi tokens, only ever in the rya cluster; folds to र.
+- आॅ and अॉ, keyboard slips for ऑ.
+- A colon inside a Devanagari word is a typed visarga (स्वत:च for स्वतःच).
+- ॐ is a ligature for a syllable, not a letter; expands to ओम्.
+- Southern short vowels ऒ ऎ and the vocalic-RR matra, 6 tokens, fold onto
+  their long counterparts.
+- Orphan matras with no consonant to attach to are dropped and noted.
+- Digits: 15 Marathi utterances, none in Hindi. `src/g2p/numbers.py` expands
+  0-20, exact tens, 21-25, and round hundreds and thousands. Anything outside
+  that raises rather than guessing: a wrong number word would be a
+  pronunciation error baked into training data and invisible afterwards.
+
+Punctuation is kept rather than stripped, folded to four marks (, . ? !). It is
+the only prosodic signal the text carries and it covers roughly one token in
+six.
+
+**Inventory.** 75 declared symbols; Hindi uses 72, Marathi 67. Marathi's
+inventory is a strict subset of Hindi's, missing rĩ x ɔː̃ ɣ ɽ, all Perso-Arabic
+or marginal. Nothing appears in Marathi that is absent from Hindi, so the
+control comparison sits in one symbol space with no Marathi-only embedding rows.
+
+Rare phones are recorded as a known weakness: Marathi has ɽʱ once, z once and
+q twice, which are embedding rows with almost no gradient. Setting
+`merge_nukta=True` for Marathi is the obvious mitigation and is left as a
+decision for the training configuration rather than being applied silently here.

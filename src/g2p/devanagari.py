@@ -129,6 +129,16 @@ def word_to_segments(word: str, merge_nukta: bool = False) -> list[Segment]:
             i += 1
             continue
 
+        if ch in VOWEL_SIGNS:
+            # A matra with no consonant before it. Corpora contain a handful
+            # of these from typing slips. There is nothing for the vowel to
+            # attach to, so drop it and record the fact rather than emitting a
+            # symbol the model would have to learn.
+            if segs:
+                segs[-1].notes.append("orphan-matra")
+            i += 1
+            continue
+
         # Anything else (Latin, punctuation, digits) is left for the caller.
         segs.append(Segment(ch, "other", source_index=i))
         i += 1

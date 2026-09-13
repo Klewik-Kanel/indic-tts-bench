@@ -1,0 +1,219 @@
+{
+  "hindi": {
+    "language": "hindi",
+    "n_utterances": 5485,
+    "n_word_tokens": 99958,
+    "n_phone_tokens": 494863,
+    "inventory_declared": 75,
+    "inventory_used": 72,
+    "inventory_unused": [
+      "<unk>",
+      "sil",
+      "æ̃"
+    ],
+    "unknown_symbols": [],
+    "n_unknown_tokens": 0,
+    "empty_word_examples": [],
+    "unexpanded_numbers": [],
+    "top_phones": [
+      [
+        "|",
+        94473
+      ],
+      [
+        "ə",
+        38855
+      ],
+      [
+        "aː",
+        33696
+      ],
+      [
+        "k",
+        25884
+      ],
+      [
+        "eː",
+        24961
+      ],
+      [
+        "r",
+        22655
+      ],
+      [
+        "n",
+        17419
+      ],
+      [
+        "iː",
+        16852
+      ],
+      [
+        "s",
+        15988
+      ],
+      [
+        "ɦ",
+        15852
+      ],
+      [
+        "ɪ",
+        14892
+      ],
+      [
+        ",",
+        13691
+      ]
+    ],
+    "rare_phones": [
+      [
+        "?",
+        41
+      ],
+      [
+        "!",
+        14
+      ],
+      [
+        "ɔː̃",
+        7
+      ],
+      [
+        "æ",
+        6
+      ],
+      [
+        "ɒ̃",
+        5
+      ],
+      [
+        "rĩ",
+        2
+      ],
+      [
+        "ɭ",
+        2
+      ]
+    ]
+  },
+  "marathi": {
+    "language": "marathi",
+    "n_utterances": 5559,
+    "n_word_tokens": 55492,
+    "n_phone_tokens": 375681,
+    "inventory_declared": 75,
+    "inventory_used": 67,
+    "inventory_unused": [
+      "<unk>",
+      "rĩ",
+      "sil",
+      "x",
+      "æ̃",
+      "ɔː̃",
+      "ɣ",
+      "ɽ"
+    ],
+    "unknown_symbols": [],
+    "n_unknown_tokens": 0,
+    "empty_word_examples": [],
+    "unexpanded_numbers": [],
+    "top_phones": [
+      [
+        "|",
+        49935
+      ],
+      [
+        "aː",
+        44389
+      ],
+      [
+        "ə",
+        40681
+      ],
+      [
+        "t̪",
+        17656
+      ],
+      [
+        "eː",
+        16181
+      ],
+      [
+        "r",
+        15706
+      ],
+      [
+        "iː",
+        13151
+      ],
+      [
+        "l",
+        12247
+      ],
+      [
+        "j",
+        12244
+      ],
+      [
+        "n",
+        12126
+      ],
+      [
+        "k",
+        10107
+      ],
+      [
+        "ʋ",
+        9754
+      ]
+    ],
+    "rare_phones": [
+      [
+        "uː̃",
+        30
+      ],
+      [
+        "ɛː̃",
+        12
+      ],
+      [
+        "f",
+        12
+      ],
+      [
+        "ʊ̃",
+        6
+      ],
+      [
+        "q",
+        2
+      ],
+      [
+        "ɒ̃",
+        2
+      ],
+      [
+        "oː̃",
+        2
+      ],
+      [
+        "ɽʱ",
+        1
+      ],
+      [
+        "z",
+        1
+      ]
+    ]
+  },
+  "shared": {
+    "only_hindi": [
+      "rĩ",
+      "x",
+      "ɔː̃",
+      "ɣ",
+      "ɽ"
+    ],
+    "only_marathi": []
+  }
+}
