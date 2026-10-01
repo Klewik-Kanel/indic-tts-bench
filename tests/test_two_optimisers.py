@@ -294,3 +294,55 @@ def test_a_prefetched_run_matches_a_serial_one_bit_for_bit(tmp_path, monkeypatch
     b = torch.load(pre / "checkpoints/step_4/state.pt", weights_only=False)["model"]
     worst = max(float((a[k] - b[k]).abs().max()) for k in a)
     assert worst == 0.0, f"prefetching changed the run by {worst:g}"
+
+
+# --- the RNG is state, and resume must restore it ----------------------------
+
+class DrawingAdapter(ToyGanAdapter):
+    """A GAN that draws during its step, the way VITS does.
+
+    VITS trains its decoder on a random waveform slice; dropout draws too. An
+    adapter with no randomness cannot detect a resume that fails to restore the
+    RNG, which is exactly how that defect survived the first resume proof.
+    """
+
+    name = "drawing_gan"
+
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
+        self.calls.append(optimizer_idx)
+        fake = model(t["ids"])
+        # The random slice: scale by noise drawn from the global RNG.
+        noise = torch.randn(fake.shape[0], 1, device=fake.device)
+        if optimizer_idx == 0:
+            return model.disc((fake * noise).detach()).pow(2).mean()
+        return model.disc(fake * noise).pow(2).mean() * -1.0 + fake.pow(2).mean()
+
+
+def test_the_checkpoint_carries_the_rng_state(tmp_path):
+    out = tmp_path / "run"
+    _run(tmp_path, DrawingAdapter(), out, steps=4)
+    blob = torch.load(out / "checkpoints/step_4/state.pt", weights_only=False)
+    assert "rng" in blob and "cpu" in blob["rng"]
+
+
+def test_resume_is_bit_exact_for_an_architecture_that_draws(tmp_path):
+    """The test that would have caught the VITS divergence on 2 October.
+
+    Without the RNG in the checkpoint this fails by a margin that looks like
+    float noise during warmup and is in fact a different run.
+    """
+    killed = tmp_path / "killed"
+    torch.manual_seed(CFG["seed"])
+    _run(tmp_path, DrawingAdapter(), killed, steps=2)
+    _run(tmp_path, DrawingAdapter(), killed, steps=4)
+
+    ref = tmp_path / "ref"
+    torch.manual_seed(CFG["seed"])
+    _run(tmp_path, DrawingAdapter(), ref, steps=4)
+
+    a = torch.load(ref / "checkpoints/step_4/state.pt", weights_only=False)["model"]
+    b = torch.load(killed / "checkpoints/step_4/state.pt", weights_only=False)["model"]
+    worst = max(float((a[k] - b[k]).abs().max()) for k in a)
+    assert worst == 0.0, (
+        f"resumed weights differ by {worst:g}; the RNG state did not survive "
+        "the checkpoint, so the resumed run draws different randomness")

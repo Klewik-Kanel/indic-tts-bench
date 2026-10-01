@@ -211,6 +211,30 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                     "two-optimiser path and holds one state, but this run has "
                     f"{len(opts)} optimisers. Start this run fresh.")
             opts[0].load_state_dict(blob["optimizer"])
+
+        # The RNG is state too, and leaving it out broke resume for any
+        # architecture that draws during its training step. VITS trains its
+        # decoder on a RANDOM waveform slice, so a resumed process took
+        # different slices from an uninterrupted one and diverged. The effect
+        # was easy to miss: during warmup the learning rate is around 1e-07, so
+        # four steps moved the weights by 6e-07 in total and the divergence
+        # looked like float noise. It is not noise. It is a different run.
+        #
+        # Dropout draws as well, so this applies to FastSpeech 2 and Matcha too.
+        # The earlier bit-exact result used the toy adapter, which has no
+        # randomness in its forward pass, and therefore never tested this.
+        if "rng" in blob:
+            torch.set_rng_state(blob["rng"]["cpu"].cpu().to(torch.uint8))
+            cuda_states = blob["rng"].get("cuda") or []
+            if cuda_states and dev.type == "cuda":
+                torch.cuda.set_rng_state_all(
+                    [s.cpu().to(torch.uint8) for s in cuda_states])
+        else:
+            print(f"WARNING {run_id}: checkpoint at step {start} predates RNG "
+                  "capture, so this resume is NOT bit-exact for an "
+                  "architecture that draws during its step. The run is still "
+                  "valid; it is simply not the same run the uninterrupted one "
+                  "would have been. Start fresh if that matters.", flush=True)
         print(f"resumed {run_id} from step {start}", flush=True)
 
     # Precision. bf16 needs autocast but no gradient scaler: it has fp32's
@@ -302,7 +326,12 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                  # A list, always, even for one optimiser: a checkpoint whose
                  # shape depends on the architecture is a second thing that can
                  # disagree with the config.
-                 "optimizers": [o.state_dict() for o in opts]},
+                 "optimizers": [o.state_dict() for o in opts],
+                 # Captured at save time, so a resume continues the same
+                 # random sequence rather than starting a new one.
+                 "rng": {"cpu": torch.get_rng_state(),
+                         "cuda": (torch.cuda.get_rng_state_all()
+                                  if dev.type == "cuda" else [])}},
                 dst / "state.pt"),
                 {"run_id": run_id, "config_hash": cfg.get("config_hash", ""),
                  "architecture": cfg["architecture"], "loss": loss_val})
