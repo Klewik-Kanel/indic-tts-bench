@@ -166,6 +166,30 @@ def assert_budget_matched(runs: list[RunConfig]) -> None:
             )
 
 
+CONTROL_NOTE = """The Marathi control needs two arms, not one.
+
+Plan v2 listed the Marathi control as two runs, both phonemic, and that is what
+the matrix encoded until 1 October. It cannot answer the question it exists to
+answer.
+
+The control works by comparison of effects, not of systems. In Hindi we measure
+the gap between phonemic and graphemic input. If that gap is large, it could be
+because schwa deletion matters, or because Devanagari is simply hard for a
+character-level model for reasons that have nothing to do with schwa. Marathi
+separates the two, because it uses the same script and the same converter but
+does not apply medial schwa deletion. So the claim rests on: a large gap in
+Hindi next to a small gap in Marathi.
+
+With only a phonemic Marathi arm there is no Marathi gap to put next to it.
+The arm can be compared against Hindi in absolute quality, but that comparison
+is confounded by language, speaker and corpus all at once, which is exactly
+what the control was supposed to remove.
+
+So r18 and r19 are the Marathi graphemic arms, and the control is now four runs
+rather than two. They were not an oversight in the science; they were missing
+from the encoding of it."""
+
+
 PRECISION_NOTE = """Mixed precision is bf16, not fp16.
 
 The plan said fp16 because it was written for Kaggle's T4 and P100, neither of
@@ -282,7 +306,9 @@ def plan_runs() -> list[RunConfig]:
                                       notes="ladder rung; the 9 h rung is r01"))
             rid += 1
 
-    # Marathi control
+    # Marathi control. BOTH arms, for the reason in CONTROL_NOTE: a control
+    # that only has the phonemic arm cannot measure an effect, and an effect
+    # is the thing being compared across the two languages.
     runs.append(RunConfig(run_id="r15", architecture="fastspeech2", language="marathi",
                           input_repr="phoneme", data="9h", vocoder="hifigan_marathi",
                           notes="control arm: identical settings, schwa deletion off"))
@@ -290,6 +316,10 @@ def plan_runs() -> list[RunConfig]:
     runs.append(RunConfig(run_id="r17", architecture="hifigan", language="marathi",
                           input_repr="none", data="9h",
                           notes="shared by r15"))
+    runs.append(RunConfig(run_id="r18", architecture="fastspeech2", language="marathi",
+                          input_repr="grapheme", data="9h", vocoder="hifigan_marathi",
+                          notes="control ablation; differs from r15 only in input"))
+    runs.append(vits("r19", "marathi", "grapheme", "9h"))
     return runs
 
 
