@@ -36,13 +36,23 @@ RUNS = HERE / "runs"
 
 
 class ModelAdapter(Protocol):
-    """What an architecture must supply. Deliberately small."""
+    """What an architecture must supply. Deliberately small.
+
+    `n_optimizers`, `optimizers`, `param_groups` and `prepare` have defaults in
+    `adapters.AdapterBase` and only an adversarial architecture overrides them.
+    `loss` takes the index of the optimiser being stepped, which is 0 for every
+    single-optimiser architecture and meaningful only for a GAN.
+    """
 
     name: str
+    n_optimizers: int
 
     def build(self, vocab_size: int, cfg: dict): ...
     def collate(self, batch: list[batching.Utterance], enc: TextEncoder, cfg: dict) -> dict: ...
-    def loss(self, model, tensors: dict) -> object: ...
+    def optimizers(self, model, cfg: dict) -> list: ...
+    def param_groups(self, model) -> list: ...
+    def prepare(self, model, tensors: dict) -> dict: ...
+    def loss(self, model, tensors: dict, optimizer_idx: int = 0) -> object: ...
 
 
 @dataclass
@@ -115,7 +125,17 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
               flush=True)
 
     model = adapter.build(len(enc.vocab), cfg).to(dev)
-    opt = torch.optim.AdamW(model.parameters(), lr=float(cfg["lr"]), betas=(0.9, 0.98))
+
+    # One optimiser for most architectures, two for an adversarial one. The
+    # adapter decides, because the split is a property of the model: see
+    # AdapterBase.optimizers. The loop below steps them in index order and hands
+    # each one its own index, which is load-bearing for VITS.
+    opts = adapter.optimizers(model, cfg)
+    groups = adapter.param_groups(model)
+    if len(groups) != len(opts):
+        raise SystemExit(
+            f"{run_id}: the adapter returned {len(opts)} optimisers and "
+            f"{len(groups)} parameter groups; they must correspond")
 
     ck = CheckpointDir(out_dir / "checkpoints", RetentionPolicy())
     start = ck.resume_step()
@@ -123,7 +143,27 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
         blob = torch.load(ck.path_for(start) / "state.pt", map_location=dev,
                           weights_only=False)
         model.load_state_dict(blob["model"])
-        opt.load_state_dict(blob["optimizer"])
+        # "optimizers" is a list, one state per optimiser. "optimizer" is the
+        # single-optimiser key written before the two-optimiser path existed,
+        # and r01 and r04 are checkpointed under it, so it is still read.
+        if "optimizers" in blob:
+            saved = blob["optimizers"]
+            if len(saved) != len(opts):
+                raise SystemExit(
+                    f"{run_id}: checkpoint at step {start} holds "
+                    f"{len(saved)} optimiser states and this run has "
+                    f"{len(opts)}. Resuming would restart one optimiser's "
+                    "moments from zero, which puts a transient in the loss "
+                    "that cannot later be told from a real effect.")
+            for o, st in zip(opts, saved):
+                o.load_state_dict(st)
+        elif "optimizer" in blob:
+            if len(opts) != 1:
+                raise SystemExit(
+                    f"{run_id}: checkpoint at step {start} predates the "
+                    "two-optimiser path and holds one state, but this run has "
+                    f"{len(opts)} optimisers. Start this run fresh.")
+            opts[0].load_state_dict(blob["optimizer"])
         print(f"resumed {run_id} from step {start}", flush=True)
 
     # Precision. bf16 needs autocast but no gradient scaler: it has fp32's
@@ -151,21 +191,41 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
             utts, int(cfg["batch_frames"]), int(cfg["seed"]), steps_total, start):
         n = step + 1                                   # schedule steps are 1-based
         lr = schedule.lr_at(n, float(cfg["lr"]), int(cfg["warmup_steps"]))
-        for g in opt.param_groups:
-            g["lr"] = lr
+        for o in opts:
+            for g in o.param_groups:
+                g["lr"] = lr
 
         tensors = {k: (v.to(dev) if hasattr(v, "to") else v)
                    for k, v in adapter.collate(batch, enc, cfg).items()}
-        opt.zero_grad(set_to_none=True)
-        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
-            loss = adapter.loss(model, tensors)
-        scaler.scale(loss).backward()
-        scaler.unscale_(opt)
-        gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                               float(cfg["grad_clip"]))
-        scaler.step(opt)
-        scaler.update()
-        loss_val = float(loss.detach())
+        # Once per step, before any optimiser runs. For the coqui models this is
+        # format_batch_on_device, which derives mel from the spectrogram; doing
+        # it per optimiser would redo that work and, worse, rebuild the batch
+        # between two steps that have to see the same one.
+        tensors = adapter.prepare(model, tensors)
+
+        losses = []
+        gnorms = []
+        for idx, (o, params) in enumerate(zip(opts, groups)):
+            o.zero_grad(set_to_none=True)
+            with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
+                loss = adapter.loss(model, tensors, idx)
+            scaler.scale(loss).backward()
+            scaler.unscale_(o)
+            # Clip this optimiser's own parameters. One global norm over both
+            # halves of a GAN would let the discriminator's gradients scale the
+            # generator's clip, so grad_clip would not mean the same thing in a
+            # VITS run as in a FastSpeech 2 one.
+            gnorms.append(float(torch.nn.utils.clip_grad_norm_(
+                params, float(cfg["grad_clip"]))))
+            scaler.step(o)
+            scaler.update()
+            losses.append(float(loss.detach()))
+
+        # The headline loss is the last optimiser's: the generator's for VITS,
+        # the only one for everything else. Both are logged, because one scalar
+        # cannot show which half of a GAN is diverging.
+        loss_val = losses[-1]
+        gnorm = gnorms[-1]
 
         prog.update(n, loss_val, lr,
                     gpu_mb=(torch.cuda.max_memory_allocated() / 1e6
@@ -175,6 +235,9 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
             rec = {"step": n, "loss": round(loss_val, 5), "lr": lr,
                    "grad_norm": round(float(gnorm), 4),
                    "batch": len(batch),
+                   **({"losses": [round(x, 5) for x in losses],
+                       "grad_norms": [round(x, 4) for x in gnorms]}
+                      if len(opts) > 1 else {}),
                    "frames": len(batch) * max(u.frames for u in batch),
                    "elapsed_s": round(time.time() - t0, 1)}
             with log_path.open("a", encoding="utf-8") as fh:
@@ -182,7 +245,11 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
 
         if n % ckpt_every == 0 or n == steps_total:
             ck.save(n, lambda dst: torch.save(
-                {"model": model.state_dict(), "optimizer": opt.state_dict()},
+                {"model": model.state_dict(),
+                 # A list, always, even for one optimiser: a checkpoint whose
+                 # shape depends on the architecture is a second thing that can
+                 # disagree with the config.
+                 "optimizers": [o.state_dict() for o in opts]},
                 dst / "state.pt"),
                 {"run_id": run_id, "config_hash": cfg.get("config_hash", ""),
                  "architecture": cfg["architecture"], "loss": loss_val})

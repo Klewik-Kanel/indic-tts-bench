@@ -61,9 +61,60 @@ def pad_ids(seqs: list[list[int]]):
     return out
 
 
+# --- optimisers ------------------------------------------------------------
+
+def adamw(params, cfg: dict):
+    """One AdamW, built from the budget rather than from an upstream default.
+
+    Every run shares lr, betas and weight decay, because the budget is the
+    thing being held constant across architectures. An architecture needing
+    more than one optimiser (a GAN has two) builds several of these over
+    disjoint parameter groups; it never reaches for different hyper-parameters,
+    which would put a budget difference inside an architecture comparison.
+    """
+    import torch
+    return torch.optim.AdamW(list(params), lr=float(cfg["lr"]),
+                             betas=(0.9, 0.98))
+
+
+class AdapterBase:
+    """Defaults for the single-optimiser case, which is most architectures.
+
+    An adversarial architecture overrides `n_optimizers`, `optimizers` and
+    `param_groups`, and the loop then steps each optimiser in index order with
+    that optimiser's index passed to `loss`. The ordering is the architecture's
+    to define: for coqui's VITS, index 0 is the discriminator and index 1 the
+    generator, and the generator step reuses outputs the discriminator step
+    cached, so the order is load-bearing rather than cosmetic.
+    """
+
+    n_optimizers = 1
+
+    def optimizers(self, model, cfg: dict) -> list:
+        return [adamw(model.parameters(), cfg)]
+
+    def param_groups(self, model) -> list:
+        """The parameters each optimiser owns, for per-optimiser grad clipping.
+
+        Clipping `model.parameters()` once for a two-optimiser model would
+        compute one global norm over both halves, so the discriminator's
+        gradients would scale the generator's clip and the reverse. The budget
+        says grad_clip; it has to mean the same thing per optimiser.
+        """
+        return [list(model.parameters())]
+
+    def prepare(self, model, t: dict) -> dict:
+        """Anything that must happen once per step, before any optimiser runs.
+
+        Separate from `loss` because a two-optimiser step calls `loss` twice
+        and must not redo the per-step batch work in between.
+        """
+        return t
+
+
 # --- toy -------------------------------------------------------------------
 
-class ToyAdapter:
+class ToyAdapter(AdapterBase):
     """Text encoder plus a length regulator plus a linear mel head.
 
     Enough structure to exercise every part of the loop that can break:
@@ -104,7 +155,7 @@ class ToyAdapter:
                 "mel": torch.from_numpy(pad_stack(mels)),
                 "lengths": torch.tensor(lens)}
 
-    def loss(self, model, t: dict):
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
         import torch
         pred = model(t["ids"], t["mel"].shape[1])
         # Mask the padding, or the loss rewards predicting zeros in the pad
@@ -174,7 +225,7 @@ def assert_embedding_fits(model, vocab_size: int, run_id: str) -> None:
             "Pass coqui_characters(vocab_size).")
 
 
-class CoquiAdapter:
+class CoquiAdapter(AdapterBase):
     """Shared base for the two coqui-tts models.
 
     coqui's own trainer is deliberately not used. The fixed-budget claim rests
@@ -199,7 +250,7 @@ class CoquiAdapter:
         return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
                                   want_pitch=self.want_pitch) for u in batch]
 
-    def loss(self, model, t: dict):
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
         raise NotImplementedError          # each subclass calls train_step itself
 
 
@@ -259,10 +310,12 @@ class FastSpeech2Adapter(CoquiAdapter):
             "d_vectors": None,
         }
 
-    def loss(self, model, t: dict):
-        # A passthrough for ForwardTTS, but called for symmetry so the two
-        # adapters do not diverge silently if upstream gives it a body.
-        t = model.format_batch_on_device(t)
+    def prepare(self, model, t: dict) -> dict:
+        return model.format_batch_on_device(t)
+
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
+        # ForwardTTS is not adversarial: one optimiser, one loss, and
+        # train_step takes no optimizer_idx at all.
         _outputs, loss_dict = model.train_step(t, self._criterion)
         return loss_dict["loss"]
 
@@ -270,12 +323,17 @@ class FastSpeech2Adapter(CoquiAdapter):
 class VitsAdapter(CoquiAdapter):
     """VITS, initialised from the MMS checkpoint for the language.
 
-    Two declared deviations, both now real in the code rather than only in the
-    table: a second optimiser for the discriminator, and a 16 kHz native rate,
-    which is why batching.load_manifest selects the wav16 column for this run.
+    Two declared deviations, both real in the code: a second optimiser for the
+    discriminator, and a 16 kHz native rate, which is why
+    batching.load_manifest selects the wav16 column for this run.
+
+    The second optimiser is the architecture's, not the loop's special case:
+    `n_optimizers`, `optimizers` and `param_groups` below say what the loop
+    needs to know, and the loop stays the same loop for every architecture.
     """
 
     name = "vits"
+    n_optimizers = 2
 
     def build(self, vocab_size: int, cfg: dict):
         from TTS.tts.configs.vits_config import VitsConfig
@@ -288,10 +346,47 @@ class VitsAdapter(CoquiAdapter):
         c.audio.hop_length = 256
         c.audio.fft_size = 1024
         c.audio.win_length = 1024
+        # The budget owns both learning rates. VitsConfig ships lr_disc and
+        # lr_gen of its own, and leaving them would give the VITS runs a
+        # learning rate no other run used while assert_budget_matched went on
+        # passing, because it checks the config file and not coqui's defaults.
+        c.lr_disc = float(cfg["lr"])
+        c.lr_gen = float(cfg["lr"])
         m = Vits.init_from_config(c)
         assert_embedding_fits(m, vocab_size, cfg["run_id"])
+        # get_criterion returns [VitsDiscriminatorLoss, VitsGeneratorLoss], in
+        # that order, and train_step indexes it by optimizer_idx. The list is
+        # passed through whole rather than unpacked.
         self._criterion = m.get_criterion()
         return m
+
+    def _split(self, model) -> tuple[list, list]:
+        """Discriminator parameters, then everything else.
+
+        The split is by the `disc.` name prefix, which is how Vits.get_optimizer
+        splits them upstream. Taking upstream's own optimisers instead would
+        take upstream's learning rates with them, and the budget has to win.
+        """
+        disc, gen = [], []
+        for name, p in model.named_parameters():
+            (disc if name.startswith("disc.") else gen).append(p)
+        if not disc:
+            raise SystemExit(
+                "vits: no parameters under 'disc.'; upstream renamed the "
+                "discriminator and the two-optimiser split is now wrong")
+        return disc, gen
+
+    def optimizers(self, model, cfg: dict) -> list:
+        disc, gen = self._split(model)
+        # Index order matches train_step's optimizer_idx: 0 discriminator,
+        # 1 generator. Verified against coqui-tts 0.27.5, whose train_step
+        # docstring states it and whose idx-1 branch reads outputs the idx-0
+        # branch cached.
+        return [adamw(disc, cfg), adamw(gen, cfg)]
+
+    def param_groups(self, model) -> list:
+        disc, gen = self._split(model)
+        return [disc, gen]
 
     def collate(self, batch, enc, cfg) -> dict:
         import torch
@@ -324,15 +419,26 @@ class VitsAdapter(CoquiAdapter):
             "d_vectors": None,
         }
 
-    def loss(self, model, t: dict):
-        # format_batch_on_device is what derives mel from spec and the relative
-        # waveform lengths. coqui's own trainer calls it; we are not using that
-        # trainer, so we call it ourselves. Skipping it leaves batch["mel"]
-        # missing and train_step fails on a KeyError several layers down.
-        t = model.format_batch_on_device(t)
-        # optimizer_idx 0 is the generator. The discriminator step is handled
-        # by the runner's two-optimiser path, which is the declared deviation.
-        _, loss_dict = model.train_step(t, self._criterion, optimizer_idx=0)
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
+        """The loss for one of the two optimisers.
+
+        **optimizer_idx 0 is the DISCRIMINATOR and 1 is the GENERATOR**, which
+        is the opposite of what this adapter assumed before. Checked against the
+        installed package rather than remembered: coqui-tts 0.27.5,
+        `Vits.train_step`, whose docstring says "0 for the discriminator and 1
+        for the generator networks", whose idx-0 branch runs the full forward
+        pass and assigns `self.model_outputs_cache`, and whose idx-1 branch
+        reads that cache. An idx-1 call without a preceding idx-0 call on the
+        same batch therefore scores the previous batch's outputs, which is a
+        silent wrong answer rather than a crash.
+
+        So the order the loop steps these in is part of the architecture, not a
+        detail: 0 then 1, on the same prepared batch. The idx-0 branch feeds the
+        discriminator `model_outputs.detach()`, so backward through it does not
+        free the generator's graph and the idx-1 branch can still use it.
+        """
+        _, loss_dict = model.train_step(t, self._criterion,
+                                        optimizer_idx=optimizer_idx)
         return loss_dict["loss"]
 
 
