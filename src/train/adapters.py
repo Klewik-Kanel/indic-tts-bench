@@ -308,6 +308,14 @@ class VitsAdapter(CoquiAdapter):
             "spec": torch.from_numpy(
                 pad_stack([f["spec"] for f in feats])).transpose(1, 2).contiguous(),
             "spec_lens": torch.tensor([f["spec"].shape[0] for f in feats]),
+            # Relative frame lengths, as a fraction of the longest item in the
+            # batch. format_batch_on_device recomputes spec_lens and mel_lens
+            # from this and then asserts the two agree, so it has to be the
+            # FRAME ratio: deriving it from sample counts can round to a
+            # different frame and trip that assertion on a long batch.
+            "waveform_rel_lens": torch.tensor(
+                [f["spec"].shape[0] / max(x["spec"].shape[0] for x in feats)
+                 for f in feats], dtype=torch.float32),
             # [B, 1, samples], matching the pitch convention above.
             "waveform": torch.from_numpy(
                 pad_stack([f["wav"] for f in feats])).unsqueeze(1),
