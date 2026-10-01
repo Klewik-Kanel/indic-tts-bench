@@ -260,6 +260,9 @@ class FastSpeech2Adapter(CoquiAdapter):
         }
 
     def loss(self, model, t: dict):
+        # A passthrough for ForwardTTS, but called for symmetry so the two
+        # adapters do not diverge silently if upstream gives it a body.
+        t = model.format_batch_on_device(t)
         _outputs, loss_dict = model.train_step(t, self._criterion)
         return loss_dict["loss"]
 
@@ -314,6 +317,11 @@ class VitsAdapter(CoquiAdapter):
         }
 
     def loss(self, model, t: dict):
+        # format_batch_on_device is what derives mel from spec and the relative
+        # waveform lengths. coqui's own trainer calls it; we are not using that
+        # trainer, so we call it ourselves. Skipping it leaves batch["mel"]
+        # missing and train_step fails on a KeyError several layers down.
+        t = model.format_batch_on_device(t)
         # optimizer_idx 0 is the generator. The discriminator step is handled
         # by the runner's two-optimiser path, which is the declared deviation.
         _, loss_dict = model.train_step(t, self._criterion, optimizer_idx=0)
