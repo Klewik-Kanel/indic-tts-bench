@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from . import batching, schedule
+from .progress import Progress
 from .checkpoint import CheckpointDir, RetentionPolicy
 from .text import TextEncoder, Vocab
 
@@ -78,6 +79,12 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
     out_dir.mkdir(parents=True, exist_ok=True)
     steps_total = int(max_steps or cfg["max_steps"])
 
+    # The run records what it was, beside its own checkpoints. An export months
+    # from now reads this rather than trusting that configs/ still matches.
+    (out_dir / "config.json").write_text(
+        json.dumps(cfg, indent=1, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8")
+
     enc = TextEncoder.for_config(cfg["language"], cfg["input_repr"],
                                  merge_nukta=bool(cfg.get("merge_nukta", False)))
     enc.vocab.save(out_dir / "vocab.json")
@@ -120,6 +127,7 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
     scaler = torch.amp.GradScaler("cuda", enabled=(prec == "fp16" and on_cuda))
 
     log_path = out_dir / "train_log.jsonl"
+    prog = Progress(run_id, steps_total, start_step=start)
     t0 = time.time()
     loss_val = float("nan")
     step = start
@@ -144,6 +152,10 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
         scaler.update()
         loss_val = float(loss.detach())
 
+        prog.update(n, loss_val, lr,
+                    gpu_mb=(torch.cuda.max_memory_allocated() / 1e6
+                            if dev.type == "cuda" else None))
+
         if n % log_every == 0 or n == 1:
             rec = {"step": n, "loss": round(loss_val, 5), "lr": lr,
                    "grad_norm": round(float(gnorm), 4),
@@ -152,7 +164,6 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                    "elapsed_s": round(time.time() - t0, 1)}
             with log_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rec) + "\n")
-            print(json.dumps(rec), flush=True)
 
         if n % ckpt_every == 0 or n == steps_total:
             ck.save(n, lambda dst: torch.save(
@@ -162,6 +173,7 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                  "architecture": cfg["architecture"], "loss": loss_val})
             ck.prune()
 
+    prog.close(loss_val)
     return LoopResult(run_id=run_id, steps_done=step + 1 if steps_total else 0,
                       final_loss=loss_val, seconds=round(time.time() - t0, 1),
                       resumed_from=start)

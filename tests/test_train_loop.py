@@ -210,3 +210,49 @@ def test_the_toy_adapter_cannot_produce_a_result():
     with pytest.raises(SystemExit):
         assert_not_toy({"architecture": "toy", "run_id": "rXX"})
     assert_not_toy({"architecture": "vits", "run_id": "r02"})
+
+
+# --- live progress ----------------------------------------------------------
+
+def test_progress_writes_whole_lines_when_not_a_terminal():
+    """A nohup log full of carriage returns is unreadable and unsearchable."""
+    import io
+    from src.train.progress import Progress
+    buf = io.StringIO()
+    p = Progress("r01", 1000, stream=buf, file_every=250)
+    for s in range(1, 1001):
+        p.update(s, 1.0, 2e-4)
+    p.close(1.0)
+    out = buf.getvalue()
+    assert "\r" not in out
+    assert out.count("\n") == len([l for l in out.splitlines() if l])
+    assert "step       1/1,000" in out
+    assert "step   1,000/1,000" in out
+
+
+def test_progress_reports_every_file_every_steps_and_the_ends():
+    import io
+    from src.train.progress import Progress
+    buf = io.StringIO()
+    p = Progress("r01", 1000, stream=buf, file_every=250)
+    for s in range(1, 1001):
+        p.update(s, 1.0, 2e-4)
+    body = [l for l in buf.getvalue().splitlines() if "step" in l]
+    assert len(body) == 5          # step 1, then 250, 500, 750, 1000
+
+
+def test_elapsed_formatting_survives_a_nan_estimate():
+    from src.train.progress import _hms
+    assert _hms(float("nan")) == "--:--:--"
+    assert _hms(3661) == "1:01:01"
+    assert _hms(-5) == "0:00:00"
+
+
+# --- the export bundle ------------------------------------------------------
+
+def test_bundle_audio_params_match_the_batching_module():
+    """A vocoder fed mels on a different hop makes audio that is subtly wrong,
+    which nobody notices in a demo room."""
+    from src.export.bundle import AUDIO
+    from src.train.batching import HOP_LENGTH
+    assert AUDIO["hop_length"] == HOP_LENGTH
