@@ -250,6 +250,23 @@ class CoquiAdapter(AdapterBase):
         return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
                                   want_pitch=self.want_pitch) for u in batch]
 
+    def prepare(self, model, t: dict) -> dict:
+        """Both coqui models need this, and VITS needs it more than once.
+
+        `format_batch_on_device` is what derives `mel` from the spectrogram and
+        the relative waveform lengths. coqui's own trainer calls it; we are not
+        using that trainer, so we call it here, once per step for every coqui
+        architecture.
+
+        This lives on the shared base rather than on one subclass because of a
+        real failure: with it defined on FastSpeech2Adapter alone, VITS inherited
+        the no-op default, its idx-0 discriminator branch ran anyway (it indexes
+        only keys collate already supplies), and the idx-1 generator branch died
+        on `KeyError: 'mel'` four steps in. A per-architecture copy of a shared
+        step is exactly the kind of thing that goes missing from one of them.
+        """
+        return model.format_batch_on_device(t)
+
     def loss(self, model, t: dict, optimizer_idx: int = 0):
         raise NotImplementedError          # each subclass calls train_step itself
 
@@ -310,12 +327,10 @@ class FastSpeech2Adapter(CoquiAdapter):
             "d_vectors": None,
         }
 
-    def prepare(self, model, t: dict) -> dict:
-        return model.format_batch_on_device(t)
-
     def loss(self, model, t: dict, optimizer_idx: int = 0):
         # ForwardTTS is not adversarial: one optimiser, one loss, and
-        # train_step takes no optimizer_idx at all.
+        # train_step takes no optimizer_idx at all. `prepare` on CoquiAdapter
+        # has already run format_batch_on_device.
         _outputs, loss_dict = model.train_step(t, self._criterion)
         return loss_dict["loss"]
 

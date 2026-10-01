@@ -256,3 +256,39 @@ def test_bundle_audio_params_match_the_batching_module():
     from src.export.bundle import AUDIO
     from src.train.batching import HOP_LENGTH
     assert AUDIO["hop_length"] == HOP_LENGTH
+
+
+# --- the coqui adapters' shared per-step work -------------------------------
+
+def test_both_coqui_adapters_derive_mel_once_per_step():
+    """format_batch_on_device must run for BOTH coqui models, exactly once.
+
+    Written after it did not. With `prepare` defined on FastSpeech2Adapter only,
+    VITS inherited the no-op default; its discriminator branch ran regardless,
+    because that branch indexes only keys collate supplies, and its generator
+    branch died on KeyError: 'mel'. The failure needed a GPU and four steps to
+    appear. This test needs neither, and no upstream package either.
+    """
+    from src.train import adapters
+
+    class StubModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def format_batch_on_device(self, t):
+            self.calls += 1
+            return {**t, "mel": "derived"}
+
+    for cls in (adapters.FastSpeech2Adapter, adapters.VitsAdapter):
+        model = StubModel()
+        out = cls().prepare(model, {"spec": 1})
+        assert model.calls == 1, f"{cls.__name__} did not derive mel"
+        assert "mel" in out, f"{cls.__name__} returned a batch without mel"
+
+
+def test_the_base_adapter_prepare_is_a_no_op():
+    """Only the coqui models need per-step batch work; the toy must not."""
+    from src.train import adapters
+
+    t = {"ids": 1}
+    assert adapters.AdapterBase().prepare(object(), t) is t
