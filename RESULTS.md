@@ -761,3 +761,43 @@ beside `coqui-tts` 0.27.5 in the DGX venv. It pulls lightning, torchvision,
 torchmetrics and torchaudio, and its monotonic-alignment search is a Cython
 extension that builds at install. Nothing here has been run against the real
 package.
+
+## 2026-10-02 — correction: the mel mismatch has three axes, not one
+
+The route list in the entry above treated the mel band as the only difference.
+Reading the actual analysis code of each family shows three axes, and no family
+matches on all three. This supersedes that list.
+
+    axis          this project            jik876 / Matcha / BigVGAN   coqui (default cfg)
+    band fmax     sr/2 = 11025            8000                        None, so sr/2 = 11025
+    amplitude     log(max(mel, 1e-5))     log(clamp(mel, 1e-5))       20*log10 then normalise
+                                          IDENTICAL to ours           by ref_level_db etc
+    framing       librosa center=True,    center=False, reflect pad   coqui's own
+                  reflect pad 512         384
+
+Verified: `features.py` against `matcha/utils/audio.py` (which is jik876's code
+copied), `TTS/vocoder/configs/hifigan_config.py` (mel_fmax None at two places),
+and `TTS/utils/audio/numpy_transforms.py`, whose `build_mel_basis` passes
+`fmax=mel_fmax` straight to librosa, where None means sr/2. BigVGAN's
+`bigvgan_22khz_80band` config was read from Hugging Face: fmax 8000.
+
+So the amplitude convention we already share with the jik876 family, exactly,
+and coqui's band already matches ours. The framing difference is 512 against
+384 samples of reflect padding, which is 128 samples, 5.8 ms, half of one
+11.61 ms hop.
+
+**[Unverified]** Whether coqui's *released* `vocoder_models/en/ljspeech/
+hifigan_v2` keeps `mel_fmax: None` in its shipped config. The default says it
+should. The release gateway is not reachable from here, and coqui's own
+downloader on the DGX settles it in about two minutes:
+
+    python -c "from TTS.utils.manage import ModelManager as M; \
+      print(M().download_model('vocoder_models/en/ljspeech/hifigan_v2'))"
+    python -m src.export.vocoder <the config.json that prints>
+
+**Timing, which is the part that decays.** Four runs are committed to the sr/2
+convention: r01 and r04 complete, r07 and r08 running with about 14.8 h left
+each. Five mel-based runs have not started. Deciding before r07 and r08 finish
+costs nothing extra; letting them finish and then changing the convention
+spends that time for nothing. The eight VITS runs are unaffected whatever is
+decided.
