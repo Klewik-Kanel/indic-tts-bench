@@ -559,3 +559,58 @@ mount than it did on the local assumption it was written against.
 first-come. If runs are going to share it routinely, pairing two of our own runs
 on one card is the wrong default, and the deadline arithmetic needs a measured
 contention factor rather than an idle-card rate.
+
+## 2026-10-02 — the fixed budget is fixed in frames, and a frame is not a fixed amount of audio
+
+Found while writing the adapter parity check that `PLAN-phase3.md` §4 asks for.
+Not a code defect: every line involved does what it says. It is a confound in
+what the budget means.
+
+    batch_frames        12,000       identical in all 19 configs
+    assert_budget_matched            enforces that the NUMBER is identical
+    frames_for(s, sr)   ceil(s * sr / 256)
+
+A frame is 256 samples at the run's own sample rate. FastSpeech 2 and Matcha run
+at 22,050 Hz, and every VITS run is 16,000 Hz, which is a declared deviation for
+the MMS initialisation. So the same 12,000 frames is:
+
+    22,050 Hz     86.133 frames/s     12,000 frames = 139.32 s of audio per step
+    16,000 Hz     62.500 frames/s     12,000 frames = 192.00 s of audio per step
+
+    ratio 192.00 / 139.32 = 1.3781, which is exactly 22,050 / 16,000
+
+**Every VITS run sees 37.8% more audio per step than its FastSpeech 2
+counterpart, at a budget the code certifies as identical.** Over 100,000 steps
+that is 3,870 h of audio against 5,333 h. `assert_budget_matched` passes because
+it compares the integer 12,000, and the integer is the same.
+
+**What this does not touch.** The dissertation's question is phonemic versus
+graphemic input, and that contrast is measured within one architecture: r01
+against r04, r02 against r05, and each ladder pair. Those arms share a sample
+rate, so they share batch composition exactly, which the new parity test now
+asserts. The central claim is unaffected.
+
+**What it does touch.** Any statement that compares FastSpeech 2 with VITS
+directly, including the two ladders against each other, since the VITS ladder
+rungs are trained on more audio per step at every rung.
+
+**Three routes, and this is Kaustubh's to decide, not mine.**
+
+1. Declare it. The budget is "12,000 frames at the run's native rate", the
+   asymmetry goes in the deviations table with the 1.3781 figure, and
+   cross-architecture comparisons are reported with it stated. Costs nothing,
+   no reruns, and the limitation is explicit.
+2. Equalise the audio. A 16 kHz run would need `batch_frames = 8,707` for the
+   same 139.32 s per step. This changes the budget definition from frames to
+   seconds, so `assert_budget_matched` has to compare audio seconds rather than
+   the frame integer, and every VITS run already finished would need redoing.
+3. Equalise nothing and drop the cross-architecture claim, leaving architecture
+   as a factor the study holds constant rather than compares.
+
+Route 1 is the only one that costs no GPU time, and r01 and r04 are already
+finished under the current definition.
+
+Recorded now because the number is needed before any cross-architecture result
+is written down, not after. `tests/test_adapter_parity.py` pins 139.32, 192.00
+and 1.3781, so whichever route is taken, changing the design fails a test rather
+than silently changing what the paper compares.
