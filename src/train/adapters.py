@@ -117,6 +117,51 @@ class ToyAdapter:
 
 # --- real architectures ----------------------------------------------------
 
+def coqui_characters(vocab_size: int):
+    """A CharactersConfig sized from OUR inventory, not coqui's default.
+
+    This exists because of a silent failure worth remembering.
+    ForwardTTS.init_from_config and Vits.init_from_config build a tokenizer
+    from the config's character set and then OVERWRITE model_args.num_chars
+    with its size. Setting num_chars by hand beforehand looks like it works,
+    reports no error, and is discarded. coqui's default set is 67 symbols; our
+    phoneme inventory is 78. The result is an embedding table with 67 rows
+    being indexed at 77, which surfaces only on the GPU, thousands of lines
+    deep, as:
+
+        vectorized_gather_kernel: index out of bounds
+
+    We feed our own token ids and never use coqui's tokenizer, so only the
+    SIZE of the table matters here, not which symbol sits in which row. The
+    characters string is therefore placeholder codepoints of the right count,
+    chosen from a range that cannot collide with the punctuation or the
+    reserved pad, eos, bos and blank entries coqui adds on top.
+    """
+    from TTS.tts.configs.shared_configs import CharactersConfig
+
+    syms = "".join(chr(0x4E00 + i) for i in range(vocab_size))
+    return CharactersConfig(
+        characters=syms,
+        punctuations="!,.?",
+        pad="<PAD>", eos="<EOS>", bos="<BOS>", blank="<BLNK>",
+        characters_class="TTS.tts.utils.text.characters.Graphemes",
+    )
+
+
+def assert_embedding_fits(model, vocab_size: int, run_id: str) -> None:
+    """Fail here, on the CPU, with a readable message.
+
+    Without this the same error arrives as a CUDA device-side assert from a
+    gather kernel, which says nothing about vocabularies and cannot be caught.
+    """
+    rows = model.emb.num_embeddings
+    if rows < vocab_size:
+        raise SystemExit(
+            f"{run_id}: the model's embedding has {rows} rows and the "
+            f"vocabulary has {vocab_size} symbols. coqui rebuilt num_chars "
+            "from its own character set. Pass coqui_characters(vocab_size).")
+
+
 class CoquiAdapter:
     """Shared base for the two coqui-tts models.
 
@@ -163,16 +208,18 @@ class FastSpeech2Adapter(CoquiAdapter):
         from TTS.tts.models.forward_tts import ForwardTTS
 
         c = Fastspeech2Config()
+        c.characters = coqui_characters(vocab_size)
+        c.use_phonemes = False            # our front end already produced them
         c.model_args.use_aligner = True
         c.model_args.use_pitch = True
         c.model_args.use_energy = True
-        c.model_args.num_chars = vocab_size
         c.audio.sample_rate = int(cfg["sample_rate"])
         c.audio.num_mels = 80
         c.audio.hop_length = 256
         c.audio.fft_size = 1024
         c.audio.win_length = 1024
         m = ForwardTTS.init_from_config(c)
+        assert_embedding_fits(m, vocab_size, cfg["run_id"])
         self._criterion = m.get_criterion()
         return m
 
@@ -214,12 +261,14 @@ class VitsAdapter(CoquiAdapter):
         from TTS.tts.models.vits import Vits
 
         c = VitsConfig()
-        c.model_args.num_chars = vocab_size
+        c.characters = coqui_characters(vocab_size)
+        c.use_phonemes = False
         c.audio.sample_rate = int(cfg["sample_rate"])
         c.audio.hop_length = 256
         c.audio.fft_size = 1024
         c.audio.win_length = 1024
         m = Vits.init_from_config(c)
+        assert_embedding_fits(m, vocab_size, cfg["run_id"])
         self._criterion = m.get_criterion()
         return m
 
