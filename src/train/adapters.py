@@ -297,7 +297,13 @@ class VitsAdapter(CoquiAdapter):
         return {
             "tokens": torch.from_numpy(ids),
             "token_lens": torch.tensor([len(enc.encode(u.text)) for u in batch]),
-            "spec": torch.from_numpy(pad_stack([f["spec"] for f in feats])),
+            # [B, freq, frames]. VITS's posterior encoder is a conv1d over
+            # frequency channels, so the spectrogram is channels-first here,
+            # while FastSpeech 2 above takes its mel as [B, frames, mels]. The
+            # two architectures really do differ; padding happens on the frame
+            # axis either way, so the transpose comes after pad_stack.
+            "spec": torch.from_numpy(
+                pad_stack([f["spec"] for f in feats])).transpose(1, 2).contiguous(),
             "spec_lens": torch.tensor([f["spec"].shape[0] for f in feats]),
             # [B, 1, samples], matching the pitch convention above.
             "waveform": torch.from_numpy(
