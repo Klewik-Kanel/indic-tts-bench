@@ -15,8 +15,11 @@ Claude project.
 
 ## Status
 
-Phase 0 complete. The G2P front end is built and tested. Nothing has been
-trained yet.
+Phases 0 to 2 complete. Both corpora are standardised, the splits are frozen and
+checksummed, and the ladder is built. The G2P front end scores 83.0% (39/47)
+against native-speaker judgement; the error analysis is in `RESULTS.md` under
+1 October. Nothing has been trained yet: the training wrappers in `src/train/`
+are the next thing to build.
 
 ## Layout
 

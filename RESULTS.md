@@ -415,3 +415,77 @@ elicited judgement, with the averaging and the citation-form bias stated. Not
 reportable as a measure of the rule in connected speech, and not comparable to
 published G2P accuracies, which are scored against dictionaries rather than
 speakers.
+
+## 2026-10-01 — training loop built, resume proven bit-exact
+
+Phase 3's first half. No GPU was involved and none was needed: every failure
+this looks for is a failure of the machinery, not of the model, and all of them
+cost a Kaggle session if found late.
+
+Six modules, one per thing that can be wrong on its own.
+
+`src/train/text.py` builds the vocabulary from the declared inventory rather
+than from the corpus, so every ladder rung shares one embedding table and the
+10-minute run is not quietly a different model from the 9-hour run. 78 phoneme
+symbols, 136 grapheme symbols. An unknown symbol raises instead of becoming
+`<unk>`, because the coverage run already proved there are none and a silent
+substitution would hide a regression in the front end.
+
+`src/train/batching.py` batches to a frame budget, not an utterance count. The
+budget is charged as `len(batch) * max_frames`, which is what the GPU actually
+computes, so one long utterance in a batch of twenty cannot blow past the
+memory the budget is meant to bound. On the Hindi 9 h set at 12,000 frames:
+265 batches an epoch, median 16 utterances, largest 53, no batch over budget,
+no utterance too long to batch.
+
+`src/train/schedule.py` implements the one learning-rate schedule all four
+architectures share, instead of inheriting three upstream implementations of
+it. Continuity at the warmup join is the property worth testing, and it is:
+both branches give exactly 2e-4 at step 4,000.
+
+`src/train/checkpoint.py` keeps the last two checkpoints and every 25,000th,
+writes to a temporary directory and renames, and marks completion only after
+the rename. A directory without its marker is visibly unfinished and resume
+skips it. Pruning moves into `_trash` rather than unlinking, because deletion
+inside a connected folder fails and an operation that silently frees no space
+is worse than one that moves it.
+
+`src/train/runner.py` is the loop. torch is imported lazily, so the vocabulary,
+the batching and the checkpoint logic all import and test in an environment
+with no deep-learning stack, which is where they were written.
+
+`src/train/adapters.py` holds one adapter per architecture plus a toy adapter
+with real parameters and a real masked loss. `assert_not_toy` refuses to let a
+config that names it produce a number.
+
+**The resume result.** `python -m src.train.dryrun configs/r01.yaml --steps 20
+--kill-at 10` runs to step 10, stops as if the session was killed, restarts
+from the checkpoint, and then compares against a reference run that was never
+interrupted. The comparison is on the weights, not the loss curve: a nearly
+correct resume produces a nearly correct curve, which is exactly the defect
+that survives a glance.
+
+    data order: resume at 10 reproduces the reference sequence for 10 steps
+    weights:    bit-identical to an uninterrupted 20-step run across 11 tensors
+
+Bit-identical, not close. The data order is derived from (seed, step) rather
+than stored in the checkpoint, so a checkpoint cannot disagree with the
+manifest it was trained on, and the optimiser state travels with the weights,
+so Adam's moments do not restart from zero and leave a transient in the loss
+that would later be indistinguishable from a real effect.
+
+Running the same dry run against `configs/r02.yaml` stopped with a missing
+`wav16` file, which is the correct behaviour: r02 is the 16 kHz MMS-initialised
+VITS run, the manifest loader selected the 16 kHz column from the config's
+sample rate, and only the 22.05 kHz copies had been staged. The rate selection
+is in one place and no training script has to know about it.
+
+Tests: 25 new, 90 passing without an audio stack, 96 with one.
+
+**What this does not show.** The three real adapters raise `NotImplementedError`
+by design. FastSpeech 2, VITS and Matcha-TTS are constructed from upstream
+packages inside the Kaggle job, where those packages and their pretrained
+checkpoints are reachable; vendoring them into this repository to satisfy a
+local import would be pretending to a verification that has not happened. The
+loop, the budget, the schedule, the data order and the resume path are proven.
+The models are not yet built.
