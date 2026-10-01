@@ -20,6 +20,7 @@ deep-learning stack, which is where most of this code was written.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import time
 from dataclasses import dataclass
@@ -99,6 +100,20 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
               f"alone; longest {max(u.frames for u in big)} frames", flush=True)
 
     dev = _device(device)
+
+    # Share the card. PyTorch's caching allocator keeps every block it has ever
+    # used, so a run needing 4 GB sits on 37 of a 40 GB card and the next run
+    # dies with an out-of-memory error that has nothing to do with its own size.
+    # TRAIN_GPU_FRACTION caps what one process may reserve, so several runs fit.
+    # It is a scheduling knob and not part of the budget: it changes what else
+    # can run beside this one, never what this one computes.
+    frac = os.environ.get("TRAIN_GPU_FRACTION")
+    if frac and dev.type == "cuda":
+        torch.cuda.set_per_process_memory_fraction(float(frac))
+        print(f"{run_id}: capped at {float(frac):.0%} of the GPU "
+              f"({float(frac) * torch.cuda.get_device_properties(0).total_memory / 2**30:.1f} GiB)",
+              flush=True)
+
     model = adapter.build(len(enc.vocab), cfg).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=float(cfg["lr"]), betas=(0.9, 0.98))
 
