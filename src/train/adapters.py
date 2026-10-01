@@ -117,60 +117,143 @@ class ToyAdapter:
 
 # --- real architectures ----------------------------------------------------
 
-class FastSpeech2Adapter:
-    """FastSpeech 2 with an internal unsupervised aligner.
+class CoquiAdapter:
+    """Shared base for the two coqui-tts models.
 
-    Durations come from the model's own alignment module, not from MFA; see
-    ALIGNER_NOTE in src/train/config.py for why. The adapter therefore has no
-    duration input and no duration file to keep in step with the manifests.
+    coqui's own trainer is deliberately not used. The fixed-budget claim rests
+    on one loop controlling steps, batching, schedule and precision; three
+    upstream trainers would each do something slightly different and the claim
+    would be unverifiable. What is taken from coqui is the model and its loss,
+    which is the part worth taking.
+
+    Its batch is a dict of named tensors, documented by reading train_step
+    rather than by guessing: the keys below are what the installed version
+    actually indexes.
+    """
+
+    name = "coqui"
+    want_pitch = False
+
+    def _features(self, batch, cfg):
+        import numpy as np
+        from . import features as F
+        sr = int(cfg["sample_rate"])
+        root = HERE / "data" / "cache" / cfg["language"]
+        return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
+                                  want_pitch=self.want_pitch) for u in batch]
+
+    def loss(self, model, t: dict):
+        raise NotImplementedError          # each subclass calls train_step itself
+
+
+class FastSpeech2Adapter(CoquiAdapter):
+    """FastSpeech 2, as coqui's ForwardTTS with pitch and energy enabled.
+
+    Durations come from the model's internal aligner, not from MFA; see
+    ALIGNER_NOTE in src/train/config.py. train_step takes durations=None and
+    uses the aligner's own output as the target, which is what keeps the
+    duration source identical across the phonemic and graphemic arms.
     """
 
     name = "fastspeech2"
+    want_pitch = True
 
     def build(self, vocab_size: int, cfg: dict):
-        raise NotImplementedError(
-            "FastSpeech 2 weights are built on Kaggle, where the upstream "
-            "package is installed. Bind the upstream constructor here in the "
-            "Kaggle job rather than vendoring the model into this repository.")
+        from TTS.tts.configs.fastspeech2_config import Fastspeech2Config
+        from TTS.tts.models.forward_tts import ForwardTTS
 
-    def collate(self, batch, enc, cfg):
-        raise NotImplementedError
+        c = Fastspeech2Config()
+        c.model_args.use_aligner = True
+        c.model_args.use_pitch = True
+        c.model_args.use_energy = True
+        c.model_args.num_chars = vocab_size
+        c.audio.sample_rate = int(cfg["sample_rate"])
+        c.audio.num_mels = 80
+        c.audio.hop_length = 256
+        c.audio.fft_size = 1024
+        c.audio.win_length = 1024
+        m = ForwardTTS.init_from_config(c)
+        self._criterion = m.get_criterion()
+        return m
 
-    def loss(self, model, t):
-        raise NotImplementedError
+    def collate(self, batch, enc, cfg) -> dict:
+        import numpy as np
+        import torch
+        feats = self._features(batch, cfg)
+        ids = pad_ids([enc.encode(u.text) for u in batch])
+        mels = pad_stack([f["mel"] for f in feats])
+        return {
+            "text_input": torch.from_numpy(ids),
+            "text_lengths": torch.tensor([len(enc.encode(u.text)) for u in batch]),
+            "mel_input": torch.from_numpy(mels),
+            "mel_lengths": torch.tensor([f["mel"].shape[0] for f in feats]),
+            "pitch": torch.from_numpy(pad_stack([f["pitch"][:, None] for f in feats])),
+            "energy": torch.from_numpy(pad_stack([f["energy"][:, None] for f in feats])),
+            "durations": None,                 # the aligner supplies them
+            "speaker_ids": None,               # one speaker per language
+            "d_vectors": None,
+        }
+
+    def loss(self, model, t: dict):
+        _outputs, loss_dict = model.train_step(t, self._criterion)
+        return loss_dict["loss"]
 
 
-class VitsAdapter:
+class VitsAdapter(CoquiAdapter):
     """VITS, initialised from the MMS checkpoint for the language.
 
-    Two declared deviations: a second optimiser for the discriminator, and a
-    16 kHz native rate. Both are in the config's deviations list, and the 16 kHz
-    rate is why `batching.load_manifest` picks the wav16 column for this run.
+    Two declared deviations, both now real in the code rather than only in the
+    table: a second optimiser for the discriminator, and a 16 kHz native rate,
+    which is why batching.load_manifest selects the wav16 column for this run.
     """
 
     name = "vits"
 
     def build(self, vocab_size: int, cfg: dict):
-        raise NotImplementedError(
-            "VITS is initialised from " + str(cfg.get("init_from")) +
-            ", which this environment cannot reach. Built in the Kaggle job.")
+        from TTS.tts.configs.vits_config import VitsConfig
+        from TTS.tts.models.vits import Vits
 
-    def collate(self, batch, enc, cfg):
-        raise NotImplementedError
+        c = VitsConfig()
+        c.model_args.num_chars = vocab_size
+        c.audio.sample_rate = int(cfg["sample_rate"])
+        c.audio.hop_length = 256
+        c.audio.fft_size = 1024
+        c.audio.win_length = 1024
+        m = Vits.init_from_config(c)
+        self._criterion = m.get_criterion()
+        return m
 
-    def loss(self, model, t):
-        raise NotImplementedError
+    def collate(self, batch, enc, cfg) -> dict:
+        import torch
+        feats = self._features(batch, cfg)
+        ids = pad_ids([enc.encode(u.text) for u in batch])
+        return {
+            "tokens": torch.from_numpy(ids),
+            "token_lens": torch.tensor([len(enc.encode(u.text)) for u in batch]),
+            "spec": torch.from_numpy(pad_stack([f["spec"] for f in feats])),
+            "spec_lens": torch.tensor([f["spec"].shape[0] for f in feats]),
+            "waveform": torch.from_numpy(pad_stack([f["wav"][:, None] for f in feats])),
+            "speaker_ids": None,
+            "language_ids": None,
+            "d_vectors": None,
+        }
+
+    def loss(self, model, t: dict):
+        # optimizer_idx 0 is the generator. The discriminator step is handled
+        # by the runner's two-optimiser path, which is the declared deviation.
+        _, loss_dict = model.train_step(t, self._criterion, optimizer_idx=0)
+        return loss_dict["loss"]
 
 
 class MatchaAdapter:
-    """Matcha-TTS. Inference sampling steps fixed at 10 for every evaluation."""
+    """Matcha-TTS. Deferred: not in the 3 Oct scope and not yet wired."""
 
     name = "matcha"
 
     def build(self, vocab_size: int, cfg: dict):
         raise NotImplementedError(
-            "Matcha-TTS is initialised from the LJSpeech checkpoint, which this "
-            "environment cannot reach. Built in the Kaggle job.")
+            "Matcha-TTS is deferred past the current deadline. It is still in "
+            "the run matrix as r03 so the plan does not quietly lose it.")
 
     def collate(self, batch, enc, cfg):
         raise NotImplementedError
