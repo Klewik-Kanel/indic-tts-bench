@@ -518,3 +518,44 @@ the rest of the parameters need the same treatment before the first synthesis.
 
 **Matcha-TTS stays in the matrix.** r03 is kept, so `MatchaAdapter` is still to
 be written. The architecture count in the paper stays at three.
+
+## 2026-10-02 — the DGX is shared, and the step rate is not ours to set
+
+Diagnosing why the ladder rungs slowed from 4.11 it/s to about 1.3:
+
+    GPU            99% utilisation, 1410 of 1410 MHz, 58 C, 283 of 400 W
+    throttling     none: clocks_event_reasons.active 0x0
+    on the card    three processes: 8976, 10098 and 11192 MiB
+    host           load average 293.82 on 256 cores
+    /workspace     Lustre over tcp, 52T of 56T used, 95% full
+
+**A third process is on the GPU and it is not ours.** Two runs were launched,
+each capped by `TRAIN_GPU_FRACTION=0.25`, which on this card is 10,084 MiB. The
+third process holds 11,192 MiB, which is above that cap, so it cannot be one of
+ours. The card was at 99% utilisation with no throttling while our runs crawled,
+which is what sharing looks like from inside a container: `nvidia-smi` reports
+every process as `[Not Found]` because the names are in another PID namespace,
+and `ps` sees only our own.
+
+The load average tells the same story. Our two trainers accounted for about 8
+cores of a 293.82 load on 256 cores, so roughly 285 cores of work belong to
+someone else. The handoff's claim that the DGX is "idle apart from this work" was
+true when it was written and is not true now.
+
+**Consequences for the schedule, which matter more than the cause.** Every
+wall-clock figure in `PLAN-full-matrix.md` descends from 4.11 it/s measured on an
+idle card. That number is not a property of the run; it is a property of the card
+at the time, and it is now unreliable in both directions. The step budget is
+unaffected: 100,000 steps is 100,000 steps whoever else is on the machine, and
+nothing about the comparison between runs changes. Only the calendar does.
+
+Recorded rather than fixed, because no change on our side can reclaim another
+tenant's share. What our side can do is read less: the feature-cache change of
+`ffeb64d` reads mel, pitch and energy instead of whole entries including the
+spectrogram and the waveform, which matters more on a 95%-full shared Lustre
+mount than it did on the local assumption it was written against.
+
+**Open question for the lab, not for the code.** Whether this DGX is scheduled or
+first-come. If runs are going to share it routinely, pairing two of our own runs
+on one card is the wrong default, and the deadline arithmetic needs a measured
+contention factor rather than an idle-card rate.
