@@ -50,11 +50,45 @@ import pathlib
 import shutil
 import subprocess
 
-from ..train.batching import HOP_LENGTH
 from ..train.checkpoint import CheckpointDir
+from .vocoder import assert_mel_matches, project_mel, read_config
 
-AUDIO = {"n_fft": 1024, "hop_length": HOP_LENGTH, "n_mels": 80, "win_length": 1024}
-BUNDLE_VERSION = 1
+# Kept as a flat constant for the analysis parameters that do not depend on the
+# sample rate, derived from project_mel so there is one definition of them in
+# the repository rather than two that can drift apart.
+AUDIO = {k: v for k, v in project_mel(22_050).items()
+         if k in ("n_fft", "hop_length", "n_mels", "win_length")}
+# 2: the manifest's "vocoder_bundle" string became a "vocoder" block that
+# records whether the mel front end was actually checked.
+BUNDLE_VERSION = 2
+
+
+def resolve_vocoder(spec: str, sample_rate: int) -> dict:
+    """What the bundle records about its vocoder, and whether it was verified.
+
+    `--vocoder` takes either a path to a real checkpoint, config, or directory,
+    which is read and checked parameter by parameter, or a bare name, which
+    cannot be. A bare name is still allowed, because a vocoder may ship
+    separately from the bundle, but it is recorded as unverified: a later
+    reader has to be able to tell "checked and matching" from "nobody looked".
+
+    A mismatch raises rather than warning. The whole point of the pretrained
+    vocoder decision is that the vocoder cancels out of the phonemic-versus-
+    graphemic contrast, and it only cancels if it is the same analysis on both
+    arms as the models were trained with.
+    """
+    if not spec:
+        return {"name": "", "mel_verified": False, "note": "no vocoder attached"}
+    p = pathlib.Path(spec).expanduser()
+    if not p.exists():
+        return {"name": spec, "mel_verified": False,
+                "note": ("a name, not a path on this machine, so its mel front "
+                         "end was NOT checked against this project's")}
+    cfg, source = read_config(p)
+    rows = assert_mel_matches(sample_rate, cfg, source)
+    return {"name": p.name, "path": str(p), "source": source,
+            "mel_verified": True,
+            "mel": {r["param"]: r["got"] for r in rows}}
 
 
 def git_commit(repo: pathlib.Path) -> str:
@@ -75,7 +109,7 @@ def sha256(path: pathlib.Path) -> str:
 
 
 def export(run_dir: pathlib.Path, out_root: pathlib.Path,
-           step: int | None = None, vocoder_bundle: str = "") -> pathlib.Path:
+           step: int | None = None, vocoder: str = "") -> pathlib.Path:
     import torch
 
     run_dir = pathlib.Path(run_dir)
@@ -96,6 +130,12 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
     # laptop would quadruple the download for nothing.
     weights = {k: v.float() if hasattr(v, "float") else v
                for k, v in blob["model"].items()}
+
+    # Before anything is written: if a vocoder was given as a path, its mel
+    # front end is read and checked here, so an export with a mismatched
+    # vocoder fails instead of producing a bundle that synthesises wrongly.
+    audio = project_mel(int(cfg["sample_rate"]))
+    voc = resolve_vocoder(vocoder, int(cfg["sample_rate"]))
 
     out = pathlib.Path(out_root) / f"{cfg['run_id']}_step{step}"
     out.mkdir(parents=True, exist_ok=True)
@@ -120,9 +160,9 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
                else ", no medial schwa deletion" if cfg["input_repr"] == "phoneme"
                else ", raw characters, no front end")),
         "sample_rate": cfg["sample_rate"],
-        "audio": AUDIO,
+        "audio": audio,
         "needs_vocoder": cfg["architecture"] in ("fastspeech2", "matcha"),
-        "vocoder_bundle": vocoder_bundle,
+        "vocoder": voc,
         "trained_precision": cfg.get("precision", ""),
         "stored_precision": "fp32",
         "train_steps_planned": cfg.get("max_steps"),
@@ -139,9 +179,18 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
 
     size_mb = sum(v["bytes"] for v in manifest["files"].values()) / 1e6
     print(f"{out}  {size_mb:.1f} MB  {manifest['describes']}")
-    if manifest["needs_vocoder"] and not vocoder_bundle:
+    if manifest["needs_vocoder"] and not vocoder:
         print("  WARNING: this architecture produces mel spectrograms and is "
               "silent without a vocoder bundle. Pass --vocoder.")
+    elif manifest["needs_vocoder"] and not voc["mel_verified"]:
+        print(f"  WARNING: vocoder recorded as {voc['name']!r} but its mel "
+              "front end was not checked, because that is a name and not a "
+              "path on this machine. Pass the checkpoint or its config.json to "
+              "--vocoder so the analysis parameters are verified before any "
+              "audio from it is scored.")
+    elif manifest["needs_vocoder"]:
+        print(f"  vocoder {voc['name']}: mel front end verified against "
+              "this project's")
     return out
 
 
@@ -151,7 +200,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=pathlib.Path, default=pathlib.Path("exports"))
     ap.add_argument("--step", type=int, default=None)
     ap.add_argument("--vocoder", default="",
-                    help="bundle name of the HiFi-GAN this model needs")
+                    help="path to the HiFi-GAN checkpoint, its config.json, or "
+                         "the directory holding them; its mel front end is "
+                         "checked against this project's and the export fails "
+                         "on a mismatch. A bare name is accepted and recorded "
+                         "as unverified.")
     a = ap.parse_args(argv)
     export(a.run_dir, a.out, a.step, a.vocoder)
     return 0
