@@ -51,7 +51,7 @@ BUDGET = {
     "lr": 2.0e-4,
     "lr_schedule": "warmup_inverse_sqrt",
     "warmup_steps": 4_000,
-    "precision": "fp16",
+    "precision": "bf16",           # see PRECISION_NOTE below
     "grad_clip": 1.0,
 }
 
@@ -164,6 +164,31 @@ def assert_budget_matched(runs: list[RunConfig]) -> None:
                 f"budget field {field_name!r} is not identical across runs: "
                 f"{sorted(got)}; the fixed-budget claim would be false"
             )
+
+
+PRECISION_NOTE = """Mixed precision is bf16, not fp16.
+
+The plan said fp16 because it was written for Kaggle's T4 and P100, neither of
+which has usable bf16. Training moved to an A100, which does, and on that card
+bf16 is the better choice for three reasons.
+
+It has the exponent range of fp32, so activations and gradients cannot overflow
+to inf the way they can in fp16. That removes the loss-scaling machinery
+entirely, and with it a failure mode that is particularly unpleasant here: a
+scaler that keeps halving its scale looks like slow convergence rather than
+like a bug, and would cost a run before anyone noticed.
+
+It costs nothing in speed. The A100's tensor cores run bf16 and fp16 at the
+same rate, so the step budget is unaffected.
+
+And it is the same for every run, which is what matters most. The claim this
+study rests on is that the architectures were compared under an identical
+budget; precision is part of that budget, so it is set once here rather than
+per architecture.
+
+Recorded limitation: bf16 has fewer mantissa bits than fp16 (8 against 10), so
+it is slightly less precise per value. For acoustic modelling at this scale
+that is not the binding constraint, and the overflow behaviour is."""
 
 
 ALIGNER_NOTE = """Alignment is learned inside every model, not supplied by an

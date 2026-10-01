@@ -104,8 +104,20 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
         opt.load_state_dict(blob["optimizer"])
         print(f"resumed {run_id} from step {start}", flush=True)
 
-    use_amp = str(cfg.get("precision", "fp32")) == "fp16" and dev.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    # Precision. bf16 needs autocast but no gradient scaler: it has fp32's
+    # exponent range, so there is nothing to scale away from. fp16 does need
+    # one. Enabling a scaler under bf16 is not merely redundant, it reintroduces
+    # the failure mode bf16 was chosen to remove, so the two are kept apart.
+    prec = str(cfg.get("precision", "fp32"))
+    on_cuda = dev.type == "cuda"
+    amp_dtype = {"bf16": torch.bfloat16, "fp16": torch.float16}.get(prec)
+    use_amp = amp_dtype is not None and on_cuda
+    if prec == "bf16" and on_cuda and not torch.cuda.is_bf16_supported():
+        raise SystemExit(
+            f"{run_id}: config asks for bf16 and this GPU does not support it. "
+            "Change the budget deliberately rather than letting the run fall "
+            "back to a precision the other runs did not use.")
+    scaler = torch.amp.GradScaler("cuda", enabled=(prec == "fp16" and on_cuda))
 
     log_path = out_dir / "train_log.jsonl"
     t0 = time.time()
@@ -122,7 +134,7 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
         tensors = {k: (v.to(dev) if hasattr(v, "to") else v)
                    for k, v in adapter.collate(batch, enc, cfg).items()}
         opt.zero_grad(set_to_none=True)
-        with torch.amp.autocast("cuda", enabled=use_amp):
+        with torch.amp.autocast("cuda", enabled=use_amp, dtype=amp_dtype):
             loss = adapter.loss(model, tensors)
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
