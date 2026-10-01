@@ -64,6 +64,53 @@ class LoopResult:
     resumed_from: int
 
 
+def _prefetch(items, depth: int = 2):
+    """Yield from `items`, filling the next ones on a background thread.
+
+    Collating a batch means reading one cache entry per utterance off disk and
+    padding it, which is CPU and I/O work that the GPU cannot help with. Done
+    inline it serialises against the step: the card finishes, then waits while
+    the loop prepares the next batch. Measured on the A100, that showed up as
+    66% utilisation and a step rate about a third under the benchmark.
+
+    This changes when a batch is prepared, never which batch: the sequence is
+    consumed in order, one thread produces, the loop consumes, and the data
+    order still comes from (seed, step). An exception in the producer is
+    re-raised in the consumer rather than hanging the loop, and the thread is a
+    daemon so a killed run does not wait on it.
+
+    TRAIN_PREFETCH=0 disables it, which is the first thing to try if a step ever
+    looks non-deterministic.
+    """
+    import queue
+    import threading
+
+    if os.environ.get("TRAIN_PREFETCH") == "0":
+        yield from items
+        return
+
+    q: "queue.Queue" = queue.Queue(maxsize=max(1, depth))
+    DONE = object()
+
+    def produce():
+        try:
+            for item in items:
+                q.put(item)
+        except BaseException as exc:                  # noqa: BLE001
+            q.put(exc)
+        else:
+            q.put(DONE)
+
+    threading.Thread(target=produce, daemon=True, name="collate").start()
+    while True:
+        item = q.get()
+        if item is DONE:
+            return
+        if isinstance(item, BaseException):
+            raise item
+        yield item
+
+
 def _device(prefer: str = "auto"):
     import torch
     if prefer != "auto":
@@ -187,16 +234,22 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
     loss_val = float("nan")
     step = start
 
-    for step, batch in batching.batch_stream(
-            utts, int(cfg["batch_frames"]), int(cfg["seed"]), steps_total, start):
+    def _collated():
+        for s, b in batching.batch_stream(
+                utts, int(cfg["batch_frames"]), int(cfg["seed"]), steps_total, start):
+            yield s, b, adapter.collate(b, enc, cfg)
+
+    for step, batch, cpu_tensors in _prefetch(_collated()):
         n = step + 1                                   # schedule steps are 1-based
         lr = schedule.lr_at(n, float(cfg["lr"]), int(cfg["warmup_steps"]))
         for o in opts:
             for g in o.param_groups:
                 g["lr"] = lr
 
+        # The move to the device stays on this thread; only the collate above
+        # runs on the producer, so no CUDA call is made off the main thread.
         tensors = {k: (v.to(dev) if hasattr(v, "to") else v)
-                   for k, v in adapter.collate(batch, enc, cfg).items()}
+                   for k, v in cpu_tensors.items()}
         # Once per step, before any optimiser runs. For the coqui models this is
         # format_batch_on_device, which derives mel from the spectrogram; doing
         # it per optimiser would redo that work and, worse, rebuild the batch

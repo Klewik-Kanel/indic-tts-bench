@@ -241,6 +241,11 @@ class CoquiAdapter(AdapterBase):
 
     name = "coqui"
     want_pitch = False
+    # The arrays this architecture's collate actually indexes. Only these are
+    # read from the feature cache: see features.load_or_compute for why the
+    # difference is measurable rather than cosmetic. A key missing from this
+    # tuple is a KeyError in collate, not silent wrong data.
+    needs: tuple[str, ...] = ()
 
     def _features(self, batch, cfg):
         import numpy as np
@@ -248,7 +253,8 @@ class CoquiAdapter(AdapterBase):
         sr = int(cfg["sample_rate"])
         root = HERE / "data" / "cache" / cfg["language"]
         return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
-                                  want_pitch=self.want_pitch) for u in batch]
+                                  want_pitch=self.want_pitch,
+                                  keys=self.needs or None) for u in batch]
 
     def prepare(self, model, t: dict) -> dict:
         """Both coqui models need this, and VITS needs it more than once.
@@ -282,6 +288,7 @@ class FastSpeech2Adapter(CoquiAdapter):
 
     name = "fastspeech2"
     want_pitch = True
+    needs = ("mel", "pitch", "energy")        # never spec, never wav
 
     def build(self, vocab_size: int, cfg: dict):
         from TTS.tts.configs.fastspeech2_config import Fastspeech2Config
@@ -349,6 +356,7 @@ class VitsAdapter(CoquiAdapter):
 
     name = "vits"
     n_optimizers = 2
+    needs = ("spec", "wav")                   # mel is derived by format_batch_on_device
 
     def build(self, vocab_size: int, cfg: dict):
         from TTS.tts.configs.vits_config import VitsConfig

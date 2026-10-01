@@ -292,3 +292,37 @@ def test_the_base_adapter_prepare_is_a_no_op():
 
     t = {"ids": 1}
     assert adapters.AdapterBase().prepare(object(), t) is t
+
+
+# --- the feature cache reads only what the architecture uses -----------------
+
+def test_each_adapter_declares_the_arrays_it_reads():
+    """A key missing here is a KeyError in collate, never silent wrong data."""
+    from src.train import adapters
+
+    assert adapters.FastSpeech2Adapter.needs == ("mel", "pitch", "energy")
+    assert adapters.VitsAdapter.needs == ("spec", "wav")
+    # spec is the largest array in a cache entry and FastSpeech 2 never uses it.
+    assert "spec" not in adapters.FastSpeech2Adapter.needs
+    assert "wav" not in adapters.FastSpeech2Adapter.needs
+
+
+def test_a_subset_read_returns_exactly_the_requested_arrays(tmp_path):
+    """Reading a subset must not fall back to reading everything."""
+    np = pytest.importorskip("numpy")
+    from src.train import features as F
+
+    root = tmp_path / "cache"
+    wav = tmp_path / "u0.wav"
+    p = F.cache_path(wav, 22050, root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(p, mel=np.zeros((4, 80), "float32"), spec=np.zeros((4, 513), "float32"),
+             wav=np.zeros(1024, "float32"), energy=np.zeros(4, "float32"),
+             pitch=np.zeros(4, "float32"))
+
+    got = F.load_or_compute(wav, 22050, root, want_pitch=True,
+                            keys=("mel", "pitch", "energy"))
+    assert sorted(got) == ["energy", "mel", "pitch"]
+    assert sorted(F.load_or_compute(wav, 22050, root, keys=("spec", "wav"))) == ["spec", "wav"]
+    # No keys named means the whole entry, which is what the old callers did.
+    assert "spec" in F.load_or_compute(wav, 22050, root)

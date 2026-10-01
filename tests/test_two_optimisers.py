@@ -243,3 +243,54 @@ def test_a_mismatched_optimiser_count_refuses_to_resume(tmp_path):
     torch.save({"model": blob["model"], "optimizers": blob["optimizers"][:1]}, p)
     with pytest.raises(SystemExit):
         _run(tmp_path, ToyGanAdapter(), out, steps=4)
+
+
+# --- prefetching must not change the run ------------------------------------
+
+def test_prefetch_preserves_order_and_completeness():
+    """Prefetching changes WHEN a batch is prepared, never which one."""
+    from src.train.runner import _prefetch
+
+    src = list(range(200))
+    assert list(_prefetch(iter(src), depth=3)) == src
+    assert list(_prefetch(iter([]), depth=2)) == []
+
+
+def test_prefetch_reraises_a_producer_error_instead_of_hanging():
+    from src.train.runner import _prefetch
+
+    def bad():
+        yield 1
+        raise ValueError("feature cache is lying")
+
+    got = []
+    with pytest.raises(ValueError, match="lying"):
+        for x in _prefetch(bad()):
+            got.append(x)
+    assert got == [1]
+
+
+def test_prefetch_can_be_switched_off(monkeypatch):
+    """TRAIN_PREFETCH=0 is the escape hatch if a step ever looks unrepeatable."""
+    from src.train.runner import _prefetch
+
+    monkeypatch.setenv("TRAIN_PREFETCH", "0")
+    assert list(_prefetch(iter([1, 2, 3]))) == [1, 2, 3]
+
+
+def test_a_prefetched_run_matches_a_serial_one_bit_for_bit(tmp_path, monkeypatch):
+    """The strongest form: same weights with prefetch on and off."""
+    monkeypatch.setenv("TRAIN_PREFETCH", "0")
+    torch.manual_seed(CFG["seed"])
+    serial = tmp_path / "serial"
+    _run(tmp_path, ToyGanAdapter(), serial, steps=4)
+
+    monkeypatch.delenv("TRAIN_PREFETCH", raising=False)
+    torch.manual_seed(CFG["seed"])
+    pre = tmp_path / "pre"
+    _run(tmp_path, ToyGanAdapter(), pre, steps=4)
+
+    a = torch.load(serial / "checkpoints/step_4/state.pt", weights_only=False)["model"]
+    b = torch.load(pre / "checkpoints/step_4/state.pt", weights_only=False)["model"]
+    worst = max(float((a[k] - b[k]).abs().max()) for k in a)
+    assert worst == 0.0, f"prefetching changed the run by {worst:g}"
