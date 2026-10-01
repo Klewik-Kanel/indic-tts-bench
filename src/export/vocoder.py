@@ -88,10 +88,7 @@ def project_mel(sample_rate: int) -> dict:
             "These must be the same number: one computes the frames and the "
             "other is what the evaluation aligns against. Fix the duplication "
             "before exporting anything.")
-    sr = int(sample_rate)
-    return {"sample_rate": sr, "n_fft": int(F.N_FFT), "win_length": int(F.WIN),
-            "hop_length": int(F.HOP), "n_mels": int(F.N_MELS),
-            "fmin": 0.0, "fmax": sr / 2}
+    return F.mel_params(sample_rate)
 
 
 def find_mel(cfg: dict) -> tuple[dict, dict]:

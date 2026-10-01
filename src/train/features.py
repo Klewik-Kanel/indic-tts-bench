@@ -31,6 +31,19 @@ N_MELS = 80
 FMIN_HZ, FMAX_HZ = 60.0, 600.0        # a generous range for one adult speaker
 
 
+def mel_params(sample_rate: int) -> dict:
+    """The mel analysis this module performs, as data rather than as code.
+
+    One definition, read by everything that has to agree with it: the vocoder
+    check, the Matcha mel statistics, and the export manifest. FMIN_HZ and
+    FMAX_HZ above are the PITCH tracker's search range and are deliberately
+    not in here; the mel filter bank is built fmin=0, fmax=sr//2 in `compute`.
+    """
+    sr = int(sample_rate)
+    return {"sample_rate": sr, "n_fft": N_FFT, "win_length": WIN,
+            "hop_length": HOP, "n_mels": N_MELS, "fmin": 0.0, "fmax": sr / 2}
+
+
 def _key(sr: int) -> str:
     return hashlib.sha256(
         f"{sr}|{N_FFT}|{HOP}|{WIN}|{N_MELS}|{FMIN_HZ}|{FMAX_HZ}".encode()

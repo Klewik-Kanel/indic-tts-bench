@@ -657,3 +657,107 @@ rather than only the vocoder's.
 Still to do: obtain a checkpoint and run `python -m src.export.vocoder <path>`.
 Nothing is a result until that passes and the checkpoint's identifier is
 recorded here.
+
+## 2026-10-02 — no published HiFi-GAN matches this project's mel band
+
+The 8 kHz warning of earlier today was labelled an inference. It is now
+measured, and it is not one checkpoint's quirk.
+
+    source                                      sr     n_fft  hop  win   mels  fmin  fmax
+    this project (features.py)                   22050  1024   256  1024  80    0     11025
+    jik876/hifi-gan config_v1.json               22050  1024   256  1024  80    0     8000
+    jik876/hifi-gan config_v2.json               22050  1024   256  1024  80    0     8000
+    jik876/hifi-gan config_v3.json               22050  1024   256  1024  80    0     8000
+    Matcha-TTS's bundled HiFi-GAN (hifigan/config.py)   same shape          0     8000
+    Matcha-TTS's own training mel (data/ljspeech.yaml)  same shape          0     8000
+
+Every parameter agrees except the top of the mel filter bank. This project
+builds to sr/2; everything published builds to 8 kHz. About 22 of the 80 bands
+lie above 8 kHz, so a vocoder trained on the 8 kHz convention has never seen
+roughly a quarter of what our acoustic models predict, and band k means a
+different frequency in the two conventions.
+
+**Why this happened, which matters more than the number.** `fmax = sr/2` is a
+defensible choice when you train your own vocoder, and r06 and r17 were exactly
+that. Dropping them on 2 October to save 7.0 h removed the only component that
+was going to be fitted to this mel convention. The saving created an
+incompatibility with every off-the-shelf vocoder, and that was not visible at
+the time the trade was made.
+
+**Scope.** 9 of the 17 runs are mel-based and need a vocoder: r01, r03, r04,
+r07, r08, r09, r10, r15, r18. The 8 VITS runs are end to end and are not
+affected at all. Of the 9, four have already trained on sr/2 mels: r01 and r04
+are complete, r07 and r08 are mid-flight.
+
+**Routes, with costs.**
+
+1. Move the project to `fmax = 8000` and recompute the feature cache. Every
+   published vocoder then matches, and Matcha's LJSpeech initialisation becomes
+   legitimate rather than a representation mismatch. Costs retraining the four
+   runs already on sr/2 mels: 2 pairs, 39.2 h at the contended rate or 13.5 h
+   on an idle card, plus a cache rebuild whose cost is unmeasured.
+2. Keep sr/2 and train a vocoder after all, which reinstates r06 and r17 and
+   the 7.0 h that were saved by dropping them.
+3. Keep sr/2 and convert at synthesis time: map our 80 bands to the vocoder's
+   convention through the linear spectrogram with a pseudo-inverse of our
+   filter bank. No retraining, but it is a lossy step inside the audio path of
+   every mel-based run and it would have to be measured and declared.
+4. Keep sr/2 and report only VITS audio, with FastSpeech 2 and Matcha compared
+   on training-time metrics alone. Cheapest, and it gives up the architecture
+   comparison the vocoder decision was meant to protect.
+
+Route 1 is the only one that ends with every number computed through the
+convention everything else in the field uses. It is also the one that admits
+the 2 October saving was not a saving.
+
+Not decided here. `tests/test_vocoder_mel_match.py` and the new Matcha
+statistics guard both pin the current value, so whichever route is taken, the
+change is deliberate and breaks a test rather than passing silently.
+
+## 2026-10-02 — Matcha-TTS adapter written
+
+r03's adapter exists, so `NotImplementedError` is gone from the matrix. Written
+against matcha-tts 0.0.7.2's actual API rather than against its documentation:
+
+- `MatchaTTS.get_losses(batch)` takes `x, x_lengths, y, y_lengths, spks,
+  durations` and returns duration, prior and flow-matching losses separately.
+  Upstream's `training_step` optimises their unweighted sum, so the adapter
+  returns `sum(...)`. A weighting would be a modelling decision and would
+  belong in the config and the deviations table, not in Python.
+- `y` is `[B, n_feats, frames]`, channels-first like VITS's spectrogram and
+  unlike FastSpeech 2's `[B, frames, mels]`.
+- `encoder` and `cfm` are read by attribute, because upstream passes OmegaConf
+  nodes, while `decoder` is splatted as `Decoder(..., **decoder_params)`. Those
+  two shapes are not interchangeable, and the difference is visible only by
+  reading `flow_matching.py`. A dict for the first or a namespace for the second
+  fails at construction.
+- Hyperparameters are copied from upstream's shipped configs, not chosen here:
+  RoPE encoder, 192 channels, 6 layers, 2 heads; decoder channels [256, 256],
+  num_heads 2, act_fn snakebeta. `Decoder`'s own code defaults are num_heads 4
+  and act_fn "snake", and the shipped config overrides both, so published
+  Matcha is the config rather than the defaults.
+
+Two preconditions it refuses to guess at.
+
+**Corpus mel statistics.** Matcha normalises its mel targets by a scalar mean
+and standard deviation of the corpus, held as buffers. Upstream ships
+LJSpeech's (-5.536622, 2.116101) and defaults to (0.0, 1.0) when none are
+given. Either would train happily against the wrong centre and scale.
+`src/train/melstats.py` computes ours from this project's own cache in one
+pass, records the mel parameters it used, and `MatchaAdapter.mel_stats` refuses
+a file computed under different parameters, because a log-mel's mean is a
+property of the filter bank as much as of the audio.
+
+**Initialisation.** `r03.yaml` says `init_from: matcha_ljspeech`, which names
+nothing on disk, so the adapter stops and says so rather than silently training
+from scratch, which would be a budget change. And even with a real checkpoint
+it refuses while the mel bands differ: those weights were fitted to an 8 kHz
+bank, so starting from them under sr/2 is a different model, not a warm start.
+That is the mel-band decision above, reaching r03 from a second direction.
+
+18 assertions pass without torch, the matcha package or audio; the collate test
+needs all three and runs on the DGX. **Unverified:** that `matcha-tts` installs
+beside `coqui-tts` 0.27.5 in the DGX venv. It pulls lightning, torchvision,
+torchmetrics and torchaudio, and its monotonic-alignment search is a Cython
+extension that builds at install. Nothing here has been run against the real
+package.

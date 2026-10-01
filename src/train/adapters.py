@@ -14,6 +14,8 @@ config and in the deviations table, not in Python nobody reads.
 
 from __future__ import annotations
 
+import copy
+import json
 import pathlib
 
 from . import batching
@@ -89,6 +91,21 @@ class AdapterBase:
     """
 
     n_optimizers = 1
+    want_pitch = False
+    # The arrays this architecture's collate actually indexes. Only these are
+    # read from the feature cache: see features.load_or_compute for why the
+    # difference is measurable rather than cosmetic. A key missing from this
+    # tuple is a KeyError in collate, not silent wrong data.
+    needs: tuple[str, ...] = ()
+
+    def _features(self, batch, cfg):
+        import numpy as np
+        from . import features as F
+        sr = int(cfg["sample_rate"])
+        root = HERE / "data" / "cache" / cfg["language"]
+        return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
+                                  want_pitch=self.want_pitch,
+                                  keys=self.needs or None) for u in batch]
 
     def optimizers(self, model, cfg: dict) -> list:
         return [adamw(model.parameters(), cfg)]
@@ -240,21 +257,6 @@ class CoquiAdapter(AdapterBase):
     """
 
     name = "coqui"
-    want_pitch = False
-    # The arrays this architecture's collate actually indexes. Only these are
-    # read from the feature cache: see features.load_or_compute for why the
-    # difference is measurable rather than cosmetic. A key missing from this
-    # tuple is a KeyError in collate, not silent wrong data.
-    needs: tuple[str, ...] = ()
-
-    def _features(self, batch, cfg):
-        import numpy as np
-        from . import features as F
-        sr = int(cfg["sample_rate"])
-        root = HERE / "data" / "cache" / cfg["language"]
-        return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
-                                  want_pitch=self.want_pitch,
-                                  keys=self.needs or None) for u in batch]
 
     def prepare(self, model, t: dict) -> dict:
         """Both coqui models need this, and VITS needs it more than once.
@@ -465,21 +467,242 @@ class VitsAdapter(CoquiAdapter):
         return loss_dict["loss"]
 
 
-class MatchaAdapter:
-    """Matcha-TTS. Deferred: not in the 3 Oct scope and not yet wired."""
+# Matcha-TTS hyperparameters, copied from upstream's shipped configs rather
+# than chosen here: configs/model/matcha.yaml and model/{encoder,decoder,cfm}/
+# default.yaml at shivammehta25/Matcha-TTS, against the matcha-tts 0.0.7.2
+# sdist. Hydra interpolations are resolved to their values. Choosing these
+# numbers ourselves would make r03 a different model from published Matcha and
+# the architecture comparison would be against something nobody else has.
+MATCHA_ENCODER = {
+    "encoder_type": "RoPE Encoder",
+    "encoder_params": {
+        "n_feats": 80, "n_channels": 192, "filter_channels": 768,
+        "filter_channels_dp": 256, "n_heads": 2, "n_layers": 6,
+        "kernel_size": 3, "p_dropout": 0.1, "spk_emb_dim": 64,
+        "n_spks": 1, "prenet": True,
+    },
+    "duration_predictor_params": {
+        "filter_channels_dp": 256, "kernel_size": 3, "p_dropout": 0.1,
+    },
+}
+# A MAPPING, not a namespace: CFM.__init__ does Decoder(..., **decoder_params),
+# so this one is splatted while encoder_params and cfm_params are read by
+# attribute. The two shapes are not interchangeable and the difference is only
+# visible by reading upstream. Note also that Decoder's own defaults are
+# num_heads=4 and act_fn="snake" while the shipped config says 2 and
+# "snakebeta"; the config wins, because that is what published Matcha is.
+MATCHA_DECODER = {
+    "channels": [256, 256], "dropout": 0.05, "attention_head_dim": 64,
+    "n_blocks": 1, "num_mid_blocks": 2, "num_heads": 2, "act_fn": "snakebeta",
+}
+MATCHA_CFM = {"name": "CFM", "solver": "euler", "sigma_min": 1e-4}
+
+# What upstream's LJSpeech recipe was fitted to. Kept so the mel-band condition
+# on init_from can be stated in numbers: those weights saw a filter bank built
+# to 8 kHz and mels normalised by LJSpeech's own statistics.
+MATCHA_LJSPEECH = {"fmax": 8000.0, "mel_mean": -5.536622, "mel_std": 2.116101}
+
+
+def attr_tree(obj):
+    """Nested attribute access over a dict, for configs read with dots.
+
+    MatchaTTS reads its encoder and cfm configuration by attribute, because
+    upstream hands it an OmegaConf node. A dict raises AttributeError there.
+    Rather than depend on omegaconf for three nested dicts, this converts.
+    """
+    from types import SimpleNamespace
+    if isinstance(obj, dict):
+        return SimpleNamespace(**{k: attr_tree(v) for k, v in obj.items()})
+    return obj
+
+
+class MatchaAdapter(AdapterBase):
+    """Matcha-TTS: optimal-transport flow matching over mel spectrograms.
+
+    Not a `CoquiAdapter`. Matcha is a separate upstream package with its own
+    conventions: it is a Lightning module, its losses come from `get_losses`
+    rather than `train_step`, there is no `format_batch_on_device`, and it
+    takes no `optimizer_idx` because it is not adversarial. One optimiser.
+
+    Three things about it differ from the other two adapters and each is a
+    place where a silent mistake was available:
+
+    **Its mel targets are normalised.** `get_losses` expects `y` already
+    centred and scaled by the corpus statistics the model was constructed
+    with. Feeding raw log-mel trains against a distribution the prior loss
+    does not expect. The statistics come from `src/train/melstats.py`, over
+    this project's own cache, and this adapter refuses to run without them
+    rather than falling back to upstream's defaults of 0.0 and 1.0.
+
+    **Its mel is channels-first**, `[B, n_feats, frames]`, like VITS's
+    spectrogram and unlike FastSpeech 2's `[B, frames, mels]`.
+
+    **Its durations come from monotonic alignment search inside the model**,
+    which is the same arrangement as FastSpeech 2's internal aligner and is why
+    `durations` is passed as None. `aligner: internal_mas` in the config.
+    """
 
     name = "matcha"
+    needs = ("mel",)
+
+    # --- the corpus statistics, which are a precondition and not a default ---
+
+    def mel_stats(self, cfg: dict) -> dict:
+        """Read the corpus mel statistics, or stop with what to run.
+
+        Also checks that they were computed under the analysis in force now. A
+        mel mean and standard deviation are properties of the filter bank as
+        much as of the audio, so a stats file written before a change to the
+        mel parameters describes a different quantity. Reusing it would shift
+        every target by a constant nobody would find later.
+        """
+        from . import features as F
+        from . import melstats
+
+        p = melstats.stats_path(cfg["language"])
+        if not p.exists():
+            raise SystemExit(
+                f"{cfg.get('run_id')}: Matcha normalises its mel targets by the "
+                f"corpus mean and standard deviation, and {p} does not exist. "
+                f"Run:  python -m src.train.melstats {cfg['language']} "
+                f"--sample-rate {int(cfg['sample_rate'])}\n"
+                "Upstream's LJSpeech numbers are not a substitute: different "
+                "corpus, different speaker, different mel band range.")
+        s = json.loads(p.read_text(encoding="utf-8"))
+        want = F.mel_params(int(cfg["sample_rate"]))
+        got = s.get("mel_params") or {}
+        bad = {k: (v, got.get(k)) for k, v in want.items() if got.get(k) != v}
+        if bad:
+            lines = "\n".join(f"    {k}: statistics say {g!r}, this run uses {w!r}"
+                               for k, (w, g) in sorted(bad.items()))
+            raise SystemExit(
+                f"{cfg.get('run_id')}: {p} was computed under a different mel "
+                f"analysis, so its mean and standard deviation describe a "
+                f"different quantity:\n{lines}\n"
+                f"  Recompute:  python -m src.train.melstats {cfg['language']} "
+                f"--sample-rate {int(cfg['sample_rate'])}")
+        for k in ("mel_mean", "mel_std"):
+            if not isinstance(s.get(k), (int, float)):
+                raise SystemExit(f"{p}: no numeric {k}")
+        if float(s["mel_std"]) <= 0:
+            raise SystemExit(f"{p}: mel_std is {s['mel_std']}, which cannot be")
+        return s
+
+    # --- initialisation from upstream weights, under one condition -----------
+
+    def assert_init_is_comparable(self, cfg: dict) -> pathlib.Path:
+        """`init_from` has to be a checkpoint, and it has to share the mel band.
+
+        Matcha's published LJSpeech weights were fitted to mels from a filter
+        bank built to 8 kHz. This project builds to sr/2. Initialising from
+        those weights and then training on these mels starts the model from a
+        representation of a different frequency range, which is not an error
+        and not visible in a loss curve. So it stops here instead, and the
+        choice between changing the mel band and training from scratch is made
+        in the config rather than by accident.
+        """
+        src = str(cfg.get("init_from") or "")
+        if not src:
+            return None
+        p = pathlib.Path(src).expanduser()
+        if not p.exists():
+            raise SystemExit(
+                f"{cfg.get('run_id')}: init_from is {src!r}, which is a label "
+                "and not a checkpoint on this machine. Point it at the "
+                "downloaded Matcha checkpoint, or set it empty to train from "
+                "scratch, which is a budget change and belongs in the "
+                "deviations table.")
+        from . import features as F
+        ours = F.mel_params(int(cfg["sample_rate"]))["fmax"]
+        theirs = MATCHA_LJSPEECH["fmax"]
+        if abs(float(ours) - float(theirs)) > 0.5:
+            raise SystemExit(
+                f"{cfg.get('run_id')}: init_from points at Matcha weights "
+                f"fitted to a mel bank reaching {theirs:.0f} Hz, and this run "
+                f"computes mels to {ours:.0f} Hz. Those weights describe a "
+                "different representation, so initialising from them is not a "
+                "warm start, it is a different model. Either settle the mel "
+                "band question first, or train r03 from scratch and record "
+                "that as the deviation.")
+        return p
+
+    # --- the three methods the loop calls ------------------------------------
 
     def build(self, vocab_size: int, cfg: dict):
-        raise NotImplementedError(
-            "Matcha-TTS is deferred past the current deadline. It is still in "
-            "the run matrix as r03 so the plan does not quietly lose it.")
+        from matcha.models.matcha_tts import MatchaTTS
 
-    def collate(self, batch, enc, cfg):
-        raise NotImplementedError
+        stats = self.mel_stats(cfg)
+        ckpt = self.assert_init_is_comparable(cfg)
 
-    def loss(self, model, t):
-        raise NotImplementedError
+        enc = copy.deepcopy(MATCHA_ENCODER)
+        enc["encoder_params"]["n_feats"] = int(stats["mel_params"]["n_mels"])
+        m = MatchaTTS(
+            n_vocab=vocab_size,
+            n_spks=1,                       # one speaker per language
+            spk_emb_dim=int(MATCHA_ENCODER["encoder_params"]["spk_emb_dim"]),
+            n_feats=int(stats["mel_params"]["n_mels"]),
+            encoder=attr_tree(enc),
+            decoder=dict(MATCHA_DECODER),   # splatted upstream: keep it a dict
+            cfm=attr_tree(MATCHA_CFM),
+            data_statistics={"mel_mean": float(stats["mel_mean"]),
+                             "mel_std": float(stats["mel_std"])},
+            # None is upstream's shipped default: train on the whole mel rather
+            # than a cut segment. With a 12,000-frame budget that is the larger
+            # memory footprint of the two, so it is the thing to watch first if
+            # the dry run runs out of memory.
+            out_size=None,
+            prior_loss=True,
+            use_precomputed_durations=False,
+        )
+        if ckpt is not None:
+            import torch
+            blob = torch.load(ckpt, map_location="cpu", weights_only=False)
+            sd = blob.get("state_dict", blob)
+            own = m.state_dict()
+            taken = {k: v for k, v in sd.items()
+                     if k in own and own[k].shape == v.shape}
+            skipped = sorted(set(own) - set(taken))
+            m.load_state_dict(taken, strict=False)
+            print(f"{cfg.get('run_id')}: initialised {len(taken)} tensors from "
+                  f"{ckpt}, {len(skipped)} left at their initial values "
+                  f"(the text embedding differs in size: this vocabulary is "
+                  f"{vocab_size})", flush=True)
+        return m
+
+    def collate(self, batch, enc, cfg) -> dict:
+        import torch
+        feats = self._features(batch, cfg)
+        stats = self.mel_stats(cfg)
+        mean, std = float(stats["mel_mean"]), float(stats["mel_std"])
+        ids = pad_ids([enc.encode(u.text) for u in batch])
+        # Normalise before padding, so the pad value 0.0 is the corpus mean in
+        # normalised space rather than a log-mel of zero, which would be a loud
+        # frame. Upstream masks the padding by y_lengths anyway; this way the
+        # pad is harmless even where a mask is missed.
+        mels = pad_stack([(f["mel"] - mean) / std for f in feats])
+        return {
+            "x": torch.from_numpy(ids),
+            "x_lengths": torch.tensor([len(enc.encode(u.text)) for u in batch]),
+            # [B, n_feats, frames]: channels-first, as VITS's spec is, and
+            # unlike FastSpeech 2's [B, frames, mels]. The transpose comes
+            # after padding, which happens on the frame axis.
+            "y": torch.from_numpy(mels).transpose(1, 2).contiguous(),
+            "y_lengths": torch.tensor([f["mel"].shape[0] for f in feats]),
+            "spks": None,                  # one speaker, so no embedding
+            "durations": None,             # monotonic alignment search, in-model
+        }
+
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
+        """The sum of Matcha's three losses, which is what upstream optimises.
+
+        `get_losses` returns duration, prior and flow-matching losses
+        separately and upstream's training_step optimises `sum(...)` of them
+        unweighted. Summing here rather than weighting keeps r03 the published
+        model; a weighting would be a modelling decision and would belong in
+        the config and the deviations table.
+        """
+        losses = model.get_losses(t)
+        return sum(losses.values())
 
 
 ADAPTERS = {
