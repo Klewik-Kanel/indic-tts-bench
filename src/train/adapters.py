@@ -154,12 +154,24 @@ def assert_embedding_fits(model, vocab_size: int, run_id: str) -> None:
     Without this the same error arrives as a CUDA device-side assert from a
     gather kernel, which says nothing about vocabularies and cannot be caught.
     """
-    rows = model.emb.num_embeddings
-    if rows < vocab_size:
+    import torch.nn as nn
+
+    # The two architectures name it differently: ForwardTTS exposes .emb at the
+    # top level, Vits keeps it at text_encoder.emb. Rather than hard-code
+    # either, find every embedding table and check the largest. A speaker or
+    # language table is small by construction, so the text embedding is the one
+    # that has to clear the vocabulary.
+    tables = {n: m.num_embeddings for n, m in model.named_modules()
+              if isinstance(m, nn.Embedding)}
+    if not tables:
+        raise SystemExit(f"{run_id}: the model has no embedding table to check")
+    biggest = max(tables.values())
+    if biggest < vocab_size:
         raise SystemExit(
-            f"{run_id}: the model's embedding has {rows} rows and the "
+            f"{run_id}: the largest embedding has {biggest} rows and the "
             f"vocabulary has {vocab_size} symbols. coqui rebuilt num_chars "
-            "from its own character set. Pass coqui_characters(vocab_size).")
+            f"from its own character set. Tables found: {tables}. "
+            "Pass coqui_characters(vocab_size).")
 
 
 class CoquiAdapter:
