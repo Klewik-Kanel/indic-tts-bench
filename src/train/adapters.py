@@ -234,8 +234,14 @@ class FastSpeech2Adapter(CoquiAdapter):
             "text_lengths": torch.tensor([len(enc.encode(u.text)) for u in batch]),
             "mel_input": torch.from_numpy(mels),
             "mel_lengths": torch.tensor([f["mel"].shape[0] for f in feats]),
-            "pitch": torch.from_numpy(pad_stack([f["pitch"][:, None] for f in feats])),
-            "energy": torch.from_numpy(pad_stack([f["energy"][:, None] for f in feats])),
+            # [B, 1, frames], NOT [B, frames, 1]. average_over_durations indexes
+            # the last axis as time; with the axes swapped its cumulative-sum
+            # arithmetic runs past the end and the only symptom is a CUDA
+            # device-side assert inside a gather kernel.
+            "pitch": torch.from_numpy(
+                pad_stack([f["pitch"] for f in feats])).unsqueeze(1),
+            "energy": torch.from_numpy(
+                pad_stack([f["energy"] for f in feats])).unsqueeze(1),
             "durations": None,                 # the aligner supplies them
             "speaker_ids": None,               # one speaker per language
             "d_vectors": None,
@@ -281,7 +287,9 @@ class VitsAdapter(CoquiAdapter):
             "token_lens": torch.tensor([len(enc.encode(u.text)) for u in batch]),
             "spec": torch.from_numpy(pad_stack([f["spec"] for f in feats])),
             "spec_lens": torch.tensor([f["spec"].shape[0] for f in feats]),
-            "waveform": torch.from_numpy(pad_stack([f["wav"][:, None] for f in feats])),
+            # [B, 1, samples], matching the pitch convention above.
+            "waveform": torch.from_numpy(
+                pad_stack([f["wav"] for f in feats])).unsqueeze(1),
             "speaker_ids": None,
             "language_ids": None,
             "d_vectors": None,
