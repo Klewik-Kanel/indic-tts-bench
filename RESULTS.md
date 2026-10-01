@@ -614,3 +614,46 @@ Recorded now because the number is needed before any cross-architecture result
 is written down, not after. `tests/test_adapter_parity.py` pins 139.32, 192.00
 and 1.3781, so whichever route is taken, changing the design fails a test rather
 than silently changing what the paper compares.
+
+## 2026-10-02 — the vocoder's mel front end is checked, not assumed
+
+Closes the item the vocoder decision left open and blocking. `--vocoder` took a
+bare string, recorded it in the manifest, and read nothing.
+
+`src/export/vocoder.py` reads a vocoder config from a json file, a directory, or
+a checkpoint's embedded config, which is the only copy certainly matching the
+weights, and compares seven parameters against `features.py`:
+
+    sample_rate  22050      n_fft 1024    win_length 1024    hop_length 256
+    n_mels 80               fmin 0.0      fmax 11025.0 (sr/2)
+
+Both published key conventions are read: coqui's `audio.fft_size`, `num_mels`,
+`mel_fmin`, `mel_fmax`, and jik876's `n_fft`, `hop_size`, `win_size`, `fmin`,
+`fmax`. A null `mel_fmax` is honoured as sr/2, which is what coqui means by it.
+Absence of any other parameter is a mismatch rather than a pass: a config that
+does not state its hop cannot be checked, and assuming the convenient answer is
+the failure this file exists to prevent.
+
+`bundle.py --vocoder` now takes a path and raises on a mismatch, so a bundle
+with a mismatched vocoder is never written. A bare name is still accepted and
+recorded as `mel_verified: false`, so a later reader can tell "checked and
+matching" from "nobody looked". Manifest version 2.
+
+20 assertions pass in `tests/test_vocoder_mel_match.py`, including the one worth
+naming: [Inference] HiFi-GANs published for LJSpeech commonly cap the mel filter
+bank at 8 kHz while this project builds to 11,025 Hz. Sample rate, hop, FFT and
+window all agree in that case and only the top of the spectrum is analysed
+differently, which is the hardest version to hear. Not verified against a real
+checkpoint, because none is in hand yet.
+
+Two incidental guards came with it. `project_mel` asserts `features.HOP ==
+batching.HOP_LENGTH`, two constants that must hold the same number: one computes
+the frames and the other is what `src/eval/mcd.py` aligns against. And a test
+asserts that `features.FMIN_HZ, FMAX_HZ = 60.0, 600.0` never become mel band
+edges: they are the pitch tracker's search range for one adult speaker, and
+wiring them into the filter bank would make every mel in the project wrong
+rather than only the vocoder's.
+
+Still to do: obtain a checkpoint and run `python -m src.export.vocoder <path>`.
+Nothing is a result until that passes and the checkpoint's identifier is
+recorded here.
