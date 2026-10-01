@@ -489,3 +489,32 @@ checkpoints are reachable; vendoring them into this repository to satisfy a
 local import would be pretending to a verification that has not happened. The
 loop, the budget, the schedule, the data order and the resume path are proven.
 The models are not yet built.
+
+## 2026-10-02 — vocoder decision: pretrained HiFi-GAN
+
+**Decided: synthesise with a pretrained HiFi-GAN. r06 and r17 leave the
+matrix.** The deviation goes in the methods table rather than being absorbed
+quietly: the vocoder in this study is not trained on the corpus and is not
+matched to the speaker.
+
+Reasoning kept here so it is not re-argued later. The acoustic runs alone need
+54.08 h of wall clock (8 pairs at 6.76 h); the vocoder pair would add 7.0 h, and
+7.08 h is exactly the margin by which the full matrix overran the Sunday
+deadline. The vocoder is also shared by both arms of every comparison in the
+matrix, so it cancels in the phonemic-versus-graphemic contrast: it shifts
+absolute MCD, not the measured effect.
+
+That last point is an expectation, not a measurement. It has not been tested
+here, and a pretrained vocoder's speaker and language mismatch could interact
+with the two arms differently. It is checked, not assumed, once r01 and r04 have
+audio: the same mels through the same vocoder, with MCD reported for both arms.
+
+**Open and blocking, before any audio from it is scored.** The checkpoint's mel
+configuration must match this project's: 22.05 kHz, hop 256, FFT 1024, window
+1024, 80 mels, fmin 0, fmax sr/2. A mismatch on any of these produces audio that
+sounds plausible and scores wrongly, and nothing downstream would reveal it.
+`src/export/bundle.py` already asserts the hop against `batching.HOP_LENGTH`;
+the rest of the parameters need the same treatment before the first synthesis.
+
+**Matcha-TTS stays in the matrix.** r03 is kept, so `MatchaAdapter` is still to
+be written. The architecture count in the paper stays at three.
