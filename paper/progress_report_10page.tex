@@ -1,0 +1,676 @@
+% =============================================================
+%  PROGRESS REPORT  (10-page body)
+%  Kaustubh Pandey (2025PA17326) - M.Tech CSE (AI), NSUT
+%  Supervisor: Dr. Shobha Bhatt
+%
+%  Compile with XeLaTeX (Overleaf: Menu -> Compiler -> XeLaTeX).
+%  Falls back to pdfLaTeX via the tipa guard below.
+%  Requires nsut_logo.png in the same folder.
+% =============================================================
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{tipa}
+  \newcommand{\ipaschwa}{\textipa{@}}
+  \newcommand{\ipalong}{\textipa{:}}
+  \newcommand{\ipaA}[1]{/#1/}
+\else
+  \usepackage{fontspec}
+  % \setmainfont{Charis SIL}   % uncomment if the default font lacks IPA
+  \newcommand{\ipaschwa}{\symbol{"0259}}
+  \newcommand{\ipalong}{\symbol{"02D0}}
+  \newcommand{\ipaA}[1]{/#1/}
+\fi
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=4pt]{caption}
+\usepackage{titlesec}
+
+\onehalfspacing
+\setlength{\parskip}{3pt}
+\renewcommand{\arraystretch}{1.05}
+\titlespacing*{\section}{0pt}{10pt}{4pt}
+\titlespacing*{\subsection}{0pt}{7pt}{3pt}
+
+\begin{document}
+
+% --------------------------------------------------------------
+% TITLE PAGE
+% --------------------------------------------------------------
+\begin{titlepage}
+    \centering
+    \vspace*{0.3cm}
+
+    {\Large \textbf{Empirical Benchmarking of Neural Text-to-Speech\\
+    Architectures for Indic Languages:\\
+    Does Explicit Devanagari Grapheme-to-Phoneme\\
+    Conversion Still Matter?}} \\[1.1cm]
+
+    This progress report submitted in partial fulfillment of the requirements for the Degree of \\[0.5cm]
+
+    {\large \textbf{MASTER OF TECHNOLOGY}} \\
+    in \\
+    Computer Science and Engineering - Artificial Intelligence \\[1.1cm]
+
+    By \\[0.2cm]
+    \textbf{Kaustubh Pandey} \hfill \textbf{2025PA17326} \\[1.1cm]
+
+    Under the Supervision \\
+    of \\[0.2cm]
+    \textbf{Dr. Shobha Bhatt} \\
+    \textbf{(Assistant Professor)} \\[1.1cm]
+
+    \includegraphics[width=3.8cm]{nsut_logo.png} \\[1.1cm]
+
+    Department of Computer Science and Engineering \\
+    Netaji Subhas University of Technology (NSUT) \\
+    New Delhi, India-110078 \\
+    SEPTEMBER 2026
+\end{titlepage}
+
+\tableofcontents
+\thispagestyle{empty}
+\newpage
+\setcounter{page}{1}
+
+% ==============================================================
+\section{Introduction}
+
+\subsection{Background}
+
+Two Hindi words make the problem concrete. \textit{Namak} (salt) is pronounced
+\ipaA{n\ipaschwa m\ipaschwa k}; \textit{namkeen} (savoury) is
+\ipaA{n\ipaschwa mki\ipalong n}. Both are written in Devanagari with no vowel
+sign after the second consonant, yet one keeps a vowel there and the other
+drops it. The spelling does not tell you which.
+
+This is schwa deletion. Devanagari is an abugida, so every consonant carries an
+unwritten inherent vowel, the schwa \ipaschwa, and Hindi deletes many of them.
+The standard treatment is still the iterative right-to-left rule of Narasimhan,
+Sproat and Kiraz \cite{narasimhan2004schwa}, which deletes a schwa lying
+between two consonants that are themselves flanked by vowels. It works well but
+not perfectly, with errors clustering at morpheme boundaries and in loanwords.
+Arora et~al. \cite{arora2020schwa} later recast the task as supervised sequence
+labelling and improved on it.
+
+Synthesis itself has moved on entirely. Three architectures cover most of
+current practice. FastSpeech~2 \cite{ren2021fastspeech2} is a
+non-autoregressive transformer and it needs explicit durations. VITS
+\cite{kim2021vits} maps text to waveform through a variational autoencoder
+trained adversarially, and it learns its own alignment. Matcha-TTS
+\cite{mehta2024matcha} uses conditional flow matching to reach
+diffusion-level quality in far fewer steps. Where a spectrogram is produced,
+HiFi-GAN \cite{kong2020hifigan} turns it into audio.
+
+Indic resources have improved too. They run from the IIT Madras consortium
+recordings \cite{baby2016resources} through AI4Bharat's baselines
+\cite{kumar2023nextbillion} and IndicVoices-R \cite{sankar2024indicvoicesr} to
+MMS \cite{pratap2024mms}. The MMS pretrained VITS checkpoints cover both my
+languages, so fine-tuning is now the realistic starting point. One further fact
+shapes this study. Marathi uses the same script as Hindi and shares most of its
+phoneme inventory \cite{ohala1999hindi, dhongde2009marathi}, but it does not
+apply Hindi's medial schwa deletion rule.
+
+\subsection{Challenges}
+
+Devanagari underspecifies the vowel, so a phonemic front end must guess, and
+sometimes guesses wrong. Beyond that, published comparisons rarely hold
+anything constant: two systems typically differ in architecture, data, sampling
+rate, vocoder and front end at once, so no quality gap can be attributed to any
+one of them.
+
+The metrics are easy to get wrong too. MCD that keeps the zeroth coefficient
+is partly a loudness measure \cite{kubichek1993mcd}. Pitch error on a linear
+scale is dominated by the higher-pitched speaker. And word error rate means
+nothing on its own. You need the recogniser's own error rate on natural audio,
+which is the floor, and it is rarely reported.
+
+\subsection{Research Gap}
+
+Strong single-system Indic results exist, as do architectural comparisons for
+English. What does not exist is a controlled measurement of how much the front
+end contributes, separated from the architecture, on a Devanagari language.
+
+Three things are missing specifically. No study varies only the input
+representation while holding architecture, data, budget, vocoder and evaluation
+fixed. No study uses a same-script control, so a difference found on Hindi
+alone cannot distinguish "Devanagari is hard" from "schwa deletion is hard".
+And no study reports how the effect changes with data quantity, though a team
+with ten hours and a team with ten minutes face different questions.
+
+\subsection{Motivation}
+
+The practical question is whether to write a G2P front end at all. It is real
+work, and building mine took most of a month. If
+current architectures learn schwa deletion from data, that month was wasted and
+nobody else should spend it. If they do not, the field should stop defaulting
+to character-level input for Indic languages, which is presently common. Either
+answer is useful and neither has been published.
+
+\subsection{Problem Statement}
+
+Holding training budget, evaluation protocol and speaker fixed, does phonemic
+input from an explicit Devanagari G2P front end improve neural TTS quality in
+Hindi relative to raw grapheme input? Does the answer depend on the acoustic
+architecture? Does it survive as training data falls from nine hours to ten
+minutes? And using Marathi as a same-script control where medial schwa deletion
+does not apply, is any effect attributable to schwa deletion rather than to the
+script in general?
+
+\subsection{Research Objectives}
+
+\begin{enumerate}[leftmargin=*, label=O\arabic*., itemsep=1pt, topsep=2pt]
+\item Build a speaker-matched, loudness-normalised Hindi and Marathi corpus
+with frozen, checksummed splits that regenerate identically.
+\item Implement a Devanagari G2P front end with schwa deletion as a separately
+switchable stage, and measure its accuracy against elicited speaker judgement
+before trusting it downstream.
+\item Train FastSpeech~2, VITS and Matcha-TTS under a provably identical
+budget, on phonemic and on graphemic input.
+\item Measure the phoneme-versus-grapheme effect across a nested data ladder
+from nine hours to ten minutes.
+\item Repeat the ablation in Marathi to separate phonology from script.
+\item Evaluate with verified objective metrics, predicted MOS, a human
+listening test, and real-time factor on consumer hardware.
+\item Release the testbed, the checkpoints and a speaker-validated
+contested-schwa stress-test set.
+\end{enumerate}
+
+% ==============================================================
+\section{Literature Survey}
+
+\textbf{Architectures.} FastSpeech~2 \cite{ren2021fastspeech2} (27M) predicts
+duration, pitch and energy explicitly then generates the spectrogram in
+parallel, which makes it fast but dependent on ground-truth durations from
+somewhere, traditionally an external aligner. VITS \cite{kim2021vits} (83M)
+collapses the pipeline into one model and learns alignment internally by
+monotonic alignment search, inherited from Glow-TTS \cite{kim2020glowtts}.
+Matcha-TTS \cite{mehta2024matcha} (18M) uses optimal-transport conditional flow
+matching to match diffusion quality in fewer steps, which makes it interesting
+at the low-data end of my ladder. StyleTTS~2 \cite{li2023styletts2} reports
+stronger naturalness than any of them; I cut it for compute.
+
+\textbf{Vocoding.} HiFi-GAN \cite{kong2020hifigan} remains the default. At
+around 14M parameters for the V1 generator it is cheap beside the acoustic
+models, which is why my design holds it fixed across the two systems needing
+one.
+
+\textbf{Alignment.} The Montreal Forced Aligner \cite{mcauliffe2017mfa} has
+been the conventional duration source for FastSpeech-family models and is what
+my original plan assumed. Badlani et~al. \cite{badlani2022alignment} then
+showed that an alignment module trained jointly with the TTS model, without
+external supervision, matches or beats forced-aligner durations. That result
+changed my design; Section 4.5 explains why.
+
+\textbf{Indic resources.} The consortium recordings \cite{baby2016resources}
+sit behind most Indian-language TTS work, including both corpora here. Kumar
+et~al. \cite{kumar2023nextbillion} showed usable quality from modest
+per-language data. IndicVoices-R \cite{sankar2024indicvoicesr} scaled that up
+for synthesis. MMS \cite{pratap2024mms} supplies the checkpoint my VITS
+condition initialises from. Between them these papers establish that Indic TTS works and
+how well it works. The contribution of the front end is not separated out in
+any of them, and that is what I am measuring.
+
+\textbf{Evaluation.} Mel-cepstral distortion \cite{kubichek1993mcd} is the
+standard spectral measure; pitch and aperiodicity usually come from WORLD
+\cite{morise2016world}; intelligibility is increasingly assessed by
+transcribing synthesised audio with Whisper \cite{radford2023whisper}. Listening
+tests are slow, so automatic MOS predictors such as UTMOS
+\cite{saeki2022utmos} and NISQA \cite{mittag2021nisqa} have become common.
+Both were trained largely on English and Japanese. I will measure how well they
+correlate with my own human ratings and report that as a result. Loudness
+normalisation follows ITU-R BS.1770 \cite{itu2015bs1770}.
+
+% ==============================================================
+\section{Experimental Setup and Work Done Till Now}
+
+\textbf{Corpora and standardisation.} I use the Hindi and Marathi corpora from
+the SPRING Lab IndicTTS collection. Neither dataset card states hours, speaker
+count or sampling rate, so I measured all three. An early estimate from a
+50-utterance sample proved 19\% low for Hindi. Every utterance then goes through the same chain. It is downmixed to mono,
+silence-trimmed at 40~dB below peak with 50~ms of padding kept, and normalised
+to $-23$~LUFS \cite{itu2015bs1770}. From there it is resampled twice, to
+22.05~kHz for the master and separately to 16~kHz for the VITS arm, and
+peak-guarded at 0.99. Two details in that chain are deliberate. Trimming happens at the 48~kHz
+source, so both outputs share their boundaries to the sample. And the 16~kHz
+copy comes from that same gained source, not from the master. Cascading two
+resamples would put a measurably different signal in front of VITS than the
+other architectures see, and that difference would show up in the results
+looking like an architectural effect.
+
+\textbf{G2P front end.} Four separable stages, arranged so the phonological
+rule can be switched without touching anything else. Normalisation handles NFC,
+nukta composition, corpus spelling repair, digit expansion and punctuation
+folding. Segmentation makes every inherent schwa explicit and tags it as
+unwritten. Schwa deletion applies the rule from \cite{narasimhan2004schwa} plus
+obligatory word-final deletion plus a lexicon override; Marathi runs identical
+code with medial deletion disabled, and that single flag is the whole control
+condition. Finally everything maps into one IPA inventory shared by both
+languages. A parallel grapheme path reuses the identical normalisation chain,
+so the ablation measures phonology rather than preprocessing.
+
+\textbf{Gold pronunciations without circularity.} I wrote the schwa rule, so
+gold forms I also wrote would measure only my own consistency. They come from
+native speakers instead, through a sheet that never shows the rule's
+prediction. Each word appears with its candidate vowels spelled out in numbered
+slots, as in \texttt{n(a1)m(a2)kiin(a3)}. Speakers mark each one yes, no or
+variable. They do not write IPA, because transcription by non-phoneticians adds
+noise that has nothing to do with the question. Their answers pass through the same converter
+to produce IPA. Items where speakers disagree are marked variable, excluded
+from the accuracy denominator and reported as a variation rate.
+
+\textbf{Metrics.} MCD uses DTW alignment over 24 coefficients, excluding
+$c_0$. The alignment matters: a model with a duration predictor differs
+systematically in timing from an end-to-end one, and frame-aligned comparison
+would charge that timing difference as spectral error. Prosody is reported as
+two separate numbers, log-$F_0$ RMSE over commonly voiced frames and
+voiced/unvoiced error rate. A system with correct voicing and wrong pitch has a
+different defect from one with the reverse.
+
+\textbf{Design and reproducibility.} There are seventeen configurations
+(Table~\ref{tab:runs}). Every acoustic run shares 100{,}000 steps, 12{,}000 mel
+frames per batch, a learning rate of $2\times10^{-4}$ with inverse-square-root
+decay after 4{,}000 warmup steps, fp16, and gradient clipping at 1.0. That
+sentence is the study's central claim, so an assertion enforces it. I am not
+relying on remembering it. One YAML file defines one run, and it carries a hash
+over every field that affects the trained model. A second assertion refuses two
+runs that share a hash. The splits are locked with a SHA-256 per file.
+Preparation, G2P and evaluation all run locally on an Apple M5. Training is
+planned on free-tier GPU resources, capped at 30 GPU-hours a week in 12-hour
+sessions, which is where the checkpoint-resume requirement comes from.
+
+% ==============================================================
+\section{Results and Discussion}
+
+Nothing has been trained yet, so what follows are properties of the corpus, the
+front end and the measuring apparatus. Each had to be established before any
+model was trained. Several turned out to be findings in their own right.
+
+
+\subsection{Corpus Profile}
+
+Neither dataset labels its speakers; there is a binary field with no
+explanation. Hindi and Marathi have to be matched on speaker
+characteristics, so I recovered the labels from median $F_0$ over 25 sampled
+utterances per speaker. It separates them cleanly, and identically, in both
+languages (Table~\ref{tab:corpus}). Every gender label here rests on that
+measurement. The dataset itself says nothing about it.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Measured corpus properties. Gender is inferred from median $F_0$.}
+\label{tab:corpus}
+\begin{tabular}{lrrrr}
+\toprule
+& \multicolumn{2}{c}{Hindi} & \multicolumn{2}{c}{Marathi} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+& Speaker 0 & Speaker 1 & Speaker 0 & Speaker 1 \\
+\midrule
+Utterances        & 5{,}983 & 5{,}842 & 5{,}362 & 5{,}577 \\
+Hours (raw)       & 13.10 & 13.13 & 11.49 & 10.88 \\
+Median $F_0$ (Hz) & 198.9 & 108.8 & 237.2 & 125.7 \\
+Inferred gender   & female & male & female & male \\
+\midrule
+Corpus total & \multicolumn{2}{c}{11{,}825 utts, 26.23 h, 48 kHz} &
+               \multicolumn{2}{c}{10{,}939 utts, 22.37 h, 48 kHz} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+I selected the male speaker in both. The hours are near identical either way, so pitch
+decided it. The two male voices sit 17~Hz apart across the two languages. The
+female pair sit 38~Hz apart. Picking the men leaves less acoustic difference
+between the arms that has nothing to do with schwa deletion.
+
+I checked transcript quality with characters per second of audio. A transcript
+that belongs to different audio shows up as an outlier on that measure. Hindi's
+median is 12.52 (p1 9.16, p99 15.77) and Marathi's is 9.10 (6.64, 11.70).
+Nothing in either falls outside 0.4 to 2.0 times the median, so there is
+nothing to clean. The longest Hindi utterance runs 127.7~s with 1{,}600
+characters. I assumed it was corrupt. That works out at 12.5 characters per
+second, which is exactly the corpus median.
+
+\subsection{Standardisation and Splits}
+
+Trimming removed 5.5\% of Hindi and 8.4\% of Marathi. Marathi carried
+noticeably more dead air. That had a consequence I had not planned. After
+trimming, and after the frozen test and development sets are taken out, only
+9.53~h and 9.16~h of training audio survive. My ladder was going to start at
+ten hours. It now starts at nine, because matching the rungs across the two
+languages matters more than a round number. An unmatched top rung would drop a
+data-quantity difference into the control comparison, and that is the one place
+it must not be.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Standardised corpora (male speaker, 1--15\,s, $-23$\,LUFS) and the
+nested data ladder in utterances per rung.}
+\label{tab:prepared}
+\begin{tabular}{lrr@{\hskip 20pt}lrr}
+\toprule
+& Hindi & Marathi & Rung & Hindi & Marathi \\
+\midrule
+Utterances retained & 5{,}485 & 5{,}559 & 9 h     & 4{,}793 & 5{,}071 \\
+Hours               & 10.289 & 9.884   & 5 h     & 2{,}668 & 2{,}810 \\
+Peak-limited        & 1 & 0             & 1 h     & 541 & 562 \\
+Test / dev          & 300 / 100 & 300 / 100 & 30 min & 265 & 279 \\
+Train (hours)       & 5{,}085 (9.525) & 5{,}159 (9.160) & 10 min & 86 & 90 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Spot-checking confirmed exactly $-23.00$~LUFS at both rates. The two copies
+agree on duration to under a millisecond, the peaks stay under the ceiling, and
+the edge padding is there. The peak guard fired once. So it is not dead code.
+
+Split membership comes from a salted SHA-256 of the utterance identifier. A
+seeded shuffle, the usual choice, depends on the order the manifest happened to
+be written in, so re-running preparation elsewhere can hand you a quietly
+different test set. Hashing the identifier makes membership a property of the
+utterance, and rebuilding reproduces the test split byte for byte. The ladder
+takes prefixes of that one ordering. Sampling each rung independently would let
+sampling variance look like a data-quantity effect, which is the effect the
+ladder exists to measure. I verified that every rung is a strict
+superset of the one below, that the three splits are pairwise disjoint, and
+that no rung reaches outside training.
+
+\subsection{G2P Coverage}
+
+I developed the front end against 49 hand-picked words and it handled all of
+them. Then I ran it over all 11{,}044 corpus transcripts. 4.1\% of Hindi phone
+tokens and 2.7\% of Marathi had no mapping at all. Both are now zero (Table~\ref{tab:coverage}). Getting there meant fixing seven
+things a curated test set was never going to find. Nine Hindi tokens carried a
+nukta on a consonant that has no nukta form, and the stray mark also broke the
+parse of the next character. 199 Marathi tokens were the letter RRA. There were
+keyboard slips producing an invalid candra-O sequence, and a colon typed where
+a visarga belonged. The OM ligature is a syllable written as a single letter.
+Southern short vowels appear that neither language distinguishes. And some
+vowel signs had no consonant to attach to.
+
+\begin{table}[htbp]
+\centering\small
+\caption{G2P coverage over both corpora after correction.}
+\label{tab:coverage}
+\begin{tabular}{lrr}
+\toprule
+& Hindi & Marathi \\
+\midrule
+Word tokens & 99{,}958 & 55{,}492 \\
+Phone tokens & 494{,}863 & 375{,}684 \\
+Unknown symbols & 0 & 0 \\
+Inventory used / declared & 72 / 75 & 67 / 75 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Marathi's inventory is a strict subset of Hindi's. It lacks only five marginal
+or Perso-Arabic phones, so the two arms share one symbol table with no
+Marathi-only embedding rows. One weakness is worth recording here. Three
+Marathi phones occur fewer than three times in the whole corpus, so those
+embedding rows will get essentially no gradient.
+
+\subsection{Metric Verification}
+
+I checked both metrics against answers I could derive on paper.
+
+MCD proved amplitude invariant. Scaling the input by 0.25 changes it by under
+$10^{-6}$~dB. That is the property that confirms the implementation. Scaling
+multiplies the power spectrum by a constant, which is a constant decibel offset
+across every mel band, and that lands entirely in the zeroth DCT coefficient.
+Dropping $c_0$ therefore makes the measure blind to gain. If that test ever
+failed, every MCD figure here would be partly a loudness measurement, and
+nothing in the results would show it.
+
+Log-$F_0$ RMSE reports $\ln(1.1)$ for a 10\% pitch error at 100~Hz and again
+at 300~Hz, exact to $10^{-12}$. A linear RMSE would call the same perceptual
+error 10~Hz on one voice and 30~Hz on another. Two further guards are tested.
+Unequal-length $F_0$ tracks raise rather than truncate, because truncation
+would favour systems that predict shorter durations. And a comparison with no
+commonly voiced frames returns NaN, not zero. The suite stands at 78 tests.
+
+\subsection{Three Defects Found}
+
+Each would have corrupted results without any visible symptom, and two were
+mine.
+
+\textbf{Punctuation was rewriting words.} I kept punctuation as a prosodic
+token, since it is the only phrasing cue the text carries. Leaving it attached
+through the schwa stage breaks the rule twice over. A trailing comma means the
+word-final schwa is no longer final, so it survives. Its survival then supplies
+the right-hand vowel that lets the schwa to its left delete. \textit{Namak},
+\ipaA{n\ipaschwa m\ipaschwa k}, came out \ipaA{n\ipaschwa mk\ipaschwa}, a
+different word. 16.5\% of Hindi word tokens and 14.9\% of Marathi carry
+punctuation. The damage would have fallen on the phonemic arm alone, because
+the grapheme path never touches the schwa stage. My headline comparison would
+have been partly measuring this bug. Punctuation is now stripped before the
+schwa stage and restored after. There is an invariance test across nine words
+and four marks in both languages.
+
+\textbf{A run was in the plan twice.} The design had 19 runs. The ladder's
+nine-hour rung was a second copy of the main run under a different identifier.
+That is ten GPU-hours for a number I already had. It stayed invisible because
+the run identifier sat inside the configuration hash, which by construction
+makes two identical runs look distinct. The identifier is now excluded, and an
+assertion refuses any two runs that share a settings hash.
+
+\textbf{The elicitation sheet gave away its own answers.} Its worked examples
+were themselves items from the 49-word test set. So every participant was
+handed the answers to three of the words they were about to be tested on. I
+noticed only because someone reading the sheet asked about one. Examples now come from outside the
+set, enforced by a check at generation time.
+
+\subsection{Two Design Decisions}
+
+\textbf{Forced alignment dropped.} My plan took FastSpeech~2's durations from
+MFA \cite{mcauliffe2017mfa}. I have replaced that with internal unsupervised
+alignment \cite{badlani2022alignment}, for three reasons. The first is that it
+was an uncontrolled asymmetry. VITS and Matcha both learn alignment internally
+\cite{kim2020glowtts}, so externally supervised durations would give one
+architecture information the other two never receive, inside a comparison whose
+subject is the architecture. The second is that it was asymmetric across
+languages as well. MFA publishes a pretrained Hindi model and no Marathi one,
+which puts that difference inside the control comparison. The third is that MFA
+would not run in my environment. The package installs and then fails on Kaldi
+bindings, which have no wheel for my architecture.
+
+One limitation follows from the change. Internal alignment is weaker when data
+is very scarce, so the lowest ladder rungs may suffer more than the top ones. I
+will measure that as a property of the ladder and report it.
+
+\textbf{Sampling rate.} The master is 22.05~kHz, as the synopsis specified.
+But VITS initialises from an MMS checkpoint \cite{pratap2024mms} that is
+natively 16~kHz, so its output carries nothing above 8~kHz. Full-band MCD would
+then charge it for missing bandwidth rather than for worse modelling. MCD is reported in two columns, full band and band-limited to
+8~kHz, and the band-limited column is the headline. Listening stimuli are
+low-passed to 8~kHz for every system, so raters hear equal bandwidth. ASR-WER
+needs no mitigation at all, since Whisper resamples to 16~kHz anyway
+\cite{radford2023whisper}.
+
+\subsection{Compute Requirements}
+
+\begin{table}[htbp]
+\centering\small
+\caption{The experimental matrix. All acoustic runs share one budget, enforced
+by assertion.}
+\label{tab:runs}
+\begin{tabular}{llllrr}
+\toprule
+Run & Architecture & Lang. & Input & Rate (kHz) & GPU-h \\
+\midrule
+r01 / r02 / r03 & FS2 / VITS / Matcha & hi & phoneme & 22.05 / 16 / 22.05 & 36 \\
+r04 / r05 & FS2 / VITS & hi & grapheme & 22.05 / 16 & 16 \\
+r06 & HiFi-GAN & hi & n/a & 22.05 & 10 \\
+r07--r10 & FastSpeech 2 & hi & phoneme, ladder & 22.05 & 20 \\
+r11--r14 & VITS & hi & phoneme, ladder & 16 & 20 \\
+r15 / r16 & FS2 / VITS & mr & phoneme & 22.05 / 16 & 24 \\
+r17 & HiFi-GAN & mr & n/a & 22.05 & 10 \\
+\midrule
+\multicolumn{5}{r}{\textbf{Total (17 runs)}} & \textbf{136} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:runs} totals 136 GPU-hours at one seed per configuration. On
+free-tier resources capped at 30 hours a week, that is 4.53 weeks of training
+alone. One seed is not really enough. My rule is that no difference smaller
+than the measured seed variance gets reported as a finding, and with a single
+seed everywhere that floor rests on replicating one cell and generalising from
+it. Three seeds throughout would take the requirement to 368 GPU-hours.
+
+Institutional GPU access would mostly buy statistical strength. On a DGX A100
+the single-seed campaign finishes in roughly 1.6 days, and three-seed
+replication in about 4.4. The calendar saving is around four weeks out of
+thirteen, since evaluation and the listening study wait on people. The larger
+gain is in what I can claim. Every comparison moves from ``these numbers
+differ'' to ``these differ by more than run-to-run noise''.
+
+% ==============================================================
+\section{Conclusion}
+
+Preparation is done. Two Devanagari corpora totalling 48.6 hours have been
+profiled, standardised, and split into frozen checksummed partitions that
+regenerate identically. Matching them on speaker characteristics meant
+recovering those characteristics acoustically first, because the datasets do
+not record them. The G2P front end is built, with schwa deletion isolated as a
+switchable stage, and it covers both corpora completely. The instrument for
+validating it against native-speaker judgement is waiting on participants. Both
+objective metrics are checked against analytic answers. All 17 runs are
+specified, and the shared budget is enforced by assertion.
+
+Three defects turned up along the way and none of them announced itself. The
+worst affected 16.5\% of Hindi word tokens and would have degraded only the
+phonemic arm, which is the half of the comparison this study rests on. All
+three were found the same way: by running the code over the real corpus, and by
+watching someone try to use the elicitation sheet. The 78 unit tests caught
+none of them. I will pilot the listening study on two or three people before
+recruiting twenty.
+
+Remaining immediately: collecting elicitation sheets, confirming the GPU
+execution path end to end, and writing the training wrappers.
+
+% ==============================================================
+\section*{References}
+\addcontentsline{toc}{section}{References}
+\begingroup
+\footnotesize
+\setstretch{1.0}
+\begin{thebibliography}{99}
+\setlength{\itemsep}{0pt}\setlength{\parsep}{0pt}
+
+\bibitem{ren2021fastspeech2}
+Y. Ren et~al., ``FastSpeech 2: Fast and high-quality end-to-end text to
+speech,'' \textit{ICLR}, 2021. arXiv:2006.04558.
+
+\bibitem{kim2021vits}
+J. Kim, J. Kong, and J. Son, ``Conditional variational autoencoder with
+adversarial learning for end-to-end text-to-speech,'' \textit{ICML}, 2021.
+arXiv:2106.06103.
+
+\bibitem{mehta2024matcha}
+S. Mehta et~al., ``Matcha-TTS: A fast
+TTS architecture with conditional flow matching,'' \textit{ICASSP}, 2024.
+arXiv:2309.03199.
+
+\bibitem{kong2020hifigan}
+J. Kong, J. Kim, and J. Bae, ``HiFi-GAN: Generative adversarial networks for
+efficient and high fidelity speech synthesis,'' \textit{NeurIPS}, 2020.
+arXiv:2010.05646.
+
+\bibitem{kim2020glowtts}
+J. Kim et~al., ``Glow-TTS: A generative flow for
+text-to-speech via monotonic alignment search,'' \textit{NeurIPS}, 2020.
+arXiv:2005.11129.
+
+\bibitem{li2023styletts2}
+Y. A. Li et~al., ``StyleTTS 2:
+Towards human-level text-to-speech through style diffusion and adversarial
+training with large speech language models,'' \textit{NeurIPS}, 2023.
+arXiv:2306.07691.
+
+\bibitem{badlani2022alignment}
+R. Badlani et~al.,
+``One TTS alignment to rule them all,'' \textit{ICASSP}, 2022.
+arXiv:2108.10447.
+
+\bibitem{mcauliffe2017mfa}
+M. McAuliffe et~al., ``Montreal
+Forced Aligner: Trainable text-speech alignment using Kaldi,''
+\textit{Interspeech}, 2017, pp. 498--502.
+
+\bibitem{pratap2024mms}
+V. Pratap et~al., ``Scaling speech technology to 1,000+ languages,''
+\textit{Journal of Machine Learning Research}, vol. 25, 2024. arXiv:2305.13516.
+
+\bibitem{kumar2023nextbillion}
+G. K. Kumar et~al., ``Towards
+building text-to-speech systems for the next billion users,'' \textit{ICASSP},
+2023. arXiv:2211.09536.
+
+\bibitem{sankar2024indicvoicesr}
+A. Sankar et~al., ``IndicVoices-R: Unlocking a massive multilingual
+multi-speaker speech corpus for scaling Indian TTS,'' \textit{NeurIPS Datasets
+and Benchmarks}, 2024. arXiv:2409.05356.
+
+\bibitem{baby2016resources}
+A. Baby, A. L. Thomas, N. L. Nishanthi et~al., ``Resources for
+Indian languages,'' \textit{Proc. Text, Speech and Dialogue (CBBLR Workshop)},
+2016.
+
+\bibitem{narasimhan2004schwa}
+B. Narasimhan, R. Sproat, and G. Kiraz, ``Schwa-deletion in Hindi text-to-speech
+synthesis,'' \textit{International Journal of Speech Technology}, vol. 7,
+no. 4, pp. 319--333, 2004.
+
+\bibitem{arora2020schwa}
+A. Arora, S. Gessler, and N. Hundt, ``Supervised grapheme-to-phoneme conversion
+of orthographic schwas in Hindi and Punjabi,'' \textit{ACL}, 2020.
+arXiv:2004.10353.
+
+\bibitem{ohala1999hindi}
+M. Ohala, ``Hindi,'' in \textit{Handbook of the International Phonetic
+Association}, Cambridge University Press, 1999, pp. 100--103.
+
+\bibitem{dhongde2009marathi}
+R. V. Dhongde and K. Wali, \textit{Marathi}, John Benjamins, 2009.
+
+\bibitem{kubichek1993mcd}
+R. Kubichek, ``Mel-cepstral distance measure for objective speech quality
+assessment,'' \textit{IEEE Pacific Rim Conf. on Communications, Computers and
+Signal Processing}, 1993, pp. 125--128.
+
+\bibitem{morise2016world}
+M. Morise, F. Yokomori, and K. Ozawa, ``WORLD: A vocoder-based high-quality
+speech synthesis system for real-time applications,'' \textit{IEICE Trans. on
+Information and Systems}, vol. E99-D, no. 7, pp. 1877--1884, 2016.
+
+\bibitem{radford2023whisper}
+A. Radford et~al.,
+``Robust speech recognition via large-scale weak supervision,'' \textit{ICML},
+2023. arXiv:2212.04356.
+
+\bibitem{saeki2022utmos}
+T. Saeki et~al., ``UTMOS: UTokyo-SaruLab system for VoiceMOS Challenge 2022,''
+\textit{Interspeech}, 2022. arXiv:2204.02152.
+
+\bibitem{mittag2021nisqa}
+G. Mittag et~al., ``NISQA: A deep
+CNN-self-attention model for multidimensional speech quality prediction with
+crowdsourced datasets,'' \textit{Interspeech}, 2021. arXiv:2104.09494.
+
+\bibitem{itu2015bs1770}
+International Telecommunication Union, ``Algorithms to measure audio programme
+loudness and true-peak audio level,'' Recommendation ITU-R BS.1770-4, 2015.
+
+\end{thebibliography}
+\endgroup
+
+\end{document}

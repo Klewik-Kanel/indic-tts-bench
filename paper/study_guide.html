@@ -1,0 +1,1125 @@
+<title>Schwa Defence Handbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Gentium+Book+Plus:wght@400;700&family=Noto+Sans+Devanagari:wght@400;600&display=swap">
+
+<style>
+:root{
+  --bg:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF2F1; --sunk:#E4EBEA;
+  --text:#18282A; --text-2:#56676A; --text-3:#869597;
+  --rule:#D9E2E1; --rule-2:#C3D0CF;
+  --ink:#13383B;
+  --accent:#A93E26; --accent-soft:#F7EAE5; --accent-line:#E4C3B8;
+  --ok:#2C6E4B; --ok-soft:#E6F0EA;
+  --warn:#7E6314; --warn-soft:#F4EEDA;
+  --shadow:0 1px 2px rgba(19,56,59,.06), 0 8px 24px -16px rgba(19,56,59,.28);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1819; --surface:#142425; --surface-2:#1A2E2F; --sunk:#101E1F;
+    --text:#E1EAE9; --text-2:#9CB0B0; --text-3:#7A8D8D;
+    --rule:#26403F; --rule-2:#345251;
+    --ink:#9FD2D0;
+    --accent:#E58164; --accent-soft:#2D1C17; --accent-line:#4A2D24;
+    --ok:#74C295; --ok-soft:#14291F; --warn:#D6B25C; --warn-soft:#2A2312;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1819; --surface:#142425; --surface-2:#1A2E2F; --sunk:#101E1F;
+  --text:#E1EAE9; --text-2:#9CB0B0; --text-3:#7A8D8D;
+  --rule:#26403F; --rule-2:#345251;
+  --ink:#9FD2D0;
+  --accent:#E58164; --accent-soft:#2D1C17; --accent-line:#4A2D24;
+  --ok:#74C295; --ok-soft:#14291F; --warn:#D6B25C; --warn-soft:#2A2312;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+.dv{font-family:"Noto Sans Devanagari","IBM Plex Sans",sans-serif; font-size:1.06em}
+.ipa{font-family:"Gentium Book Plus","Charis SIL",Georgia,serif; font-size:1.06em; letter-spacing:.01em}
+code, .mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.88em}
+code{background:var(--surface-2); padding:.1em .34em; border-radius:3px; color:var(--text)}
+
+/* ---------- shell ---------- */
+.shell{display:grid; grid-template-columns:262px minmax(0,1fr); gap:0; max-width:1240px; margin:0 auto}
+.rail{
+  position:sticky; top:env(safe-area-inset-top, 0px); align-self:start;
+  height:100vh; overflow-y:auto; padding:28px 20px 40px 22px;
+  border-right:1px solid var(--rule); background:var(--sunk);
+}
+.rail-brand{font-family:"Newsreader",Georgia,serif; font-size:19px; line-height:1.25; font-weight:600; color:var(--text); margin:0 0 2px}
+.rail-sub{font-size:11.5px; color:var(--text-3); letter-spacing:.06em; text-transform:uppercase; margin:0 0 20px}
+.rail nav{display:flex; flex-direction:column; gap:1px}
+.rail a{
+  display:flex; gap:9px; align-items:baseline; text-decoration:none; color:var(--text-2);
+  font-size:13.4px; line-height:1.35; padding:5px 8px; border-radius:5px;
+}
+.rail a .n{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--text-3); min-width:16px}
+.rail a:hover{background:var(--surface-2); color:var(--text)}
+.rail a.on{background:var(--surface); color:var(--text); font-weight:500; box-shadow:var(--shadow)}
+.rail a.on .n{color:var(--accent)}
+.rail-foot{margin-top:24px; padding-top:16px; border-top:1px solid var(--rule); font-size:12px; color:var(--text-3)}
+.tbtn{
+  margin-top:10px; font:inherit; font-size:12px; cursor:pointer; color:var(--text-2);
+  background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:5px 10px;
+}
+.tbtn:hover{border-color:var(--rule-2); color:var(--text)}
+
+main{padding:44px 44px 120px; min-width:0}
+.topnav{display:none}
+
+/* ---------- type ---------- */
+h1{font-family:"Newsreader",Georgia,serif; font-weight:600; font-size:clamp(30px,4.4vw,42px); line-height:1.13; margin:0 0 10px; text-wrap:balance; letter-spacing:-.012em}
+h2{font-family:"Newsreader",Georgia,serif; font-weight:600; font-size:clamp(23px,3vw,29px); line-height:1.22; margin:0; text-wrap:balance; letter-spacing:-.008em}
+h3{font-family:"Newsreader",Georgia,serif; font-weight:600; font-size:19.5px; line-height:1.3; margin:30px 0 8px; text-wrap:balance}
+h4{font-size:14.5px; font-weight:600; margin:22px 0 6px; letter-spacing:.01em}
+p{margin:0 0 14px; max-width:68ch}
+ul,ol{margin:0 0 14px; padding-left:20px; max-width:68ch}
+li{margin-bottom:5px}
+a{color:var(--accent)}
+.lede{font-size:17.5px; line-height:1.6; color:var(--text-2); max-width:62ch}
+.eyebrow{font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 7px}
+
+section{scroll-margin-top:24px; padding:38px 0 6px; border-top:1px solid var(--rule)}
+section:first-of-type{border-top:0; padding-top:0}
+.sec-head{display:flex; gap:14px; align-items:baseline; margin-bottom:16px}
+.sec-num{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--text-3); padding-top:6px}
+
+/* ---------- blocks ---------- */
+.card{background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:18px 20px; box-shadow:var(--shadow)}
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:14px; margin:0 0 16px}
+.grid3{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:0 0 16px}
+.card h4{margin-top:0}
+.card p:last-child, .card ul:last-child{margin-bottom:0}
+
+.note{background:var(--surface-2); border:1px solid var(--rule); border-radius:8px; padding:15px 18px; margin:0 0 16px}
+.note.accent{background:var(--accent-soft); border-color:var(--accent-line)}
+.note.ok{background:var(--ok-soft); border-color:color-mix(in srgb, var(--ok) 26%, transparent)}
+.note.warn{background:var(--warn-soft); border-color:color-mix(in srgb, var(--warn) 30%, transparent)}
+.note p:last-child{margin-bottom:0}
+.note-k{font-size:11px; letter-spacing:.11em; text-transform:uppercase; font-weight:600; margin:0 0 6px; color:var(--text-2)}
+.note.accent .note-k{color:var(--accent)}
+.note.ok .note-k{color:var(--ok)}
+.note.warn .note-k{color:var(--warn)}
+
+/* derivation / worked example */
+.deriv{background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:16px 18px; margin:0 0 16px; overflow-x:auto}
+.deriv table{border-collapse:collapse; font-size:13.5px; min-width:100%}
+.deriv td{padding:5px 12px 5px 0; vertical-align:top; border-bottom:1px solid var(--rule)}
+.deriv tr:last-child td{border-bottom:0}
+.deriv td:first-child{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--text-3); white-space:nowrap}
+.del{color:var(--accent); text-decoration:line-through; text-decoration-thickness:1.5px}
+.keep{color:var(--ok); font-weight:600}
+
+.tblwrap{overflow-x:auto; margin:0 0 16px; border:1px solid var(--rule); border-radius:8px; background:var(--surface)}
+table.data{border-collapse:collapse; width:100%; font-size:13.5px; font-variant-numeric:tabular-nums}
+table.data th{
+  text-align:left; font-weight:600; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--text-2); padding:10px 14px; border-bottom:1px solid var(--rule-2); background:var(--surface-2); white-space:nowrap;
+}
+table.data td{padding:9px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+table.data tr:last-child td{border-bottom:0}
+table.data td.num, table.data th.num{text-align:right}
+
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:10px; margin:0 0 18px}
+.stat{background:var(--surface); border:1px solid var(--rule); border-radius:8px; padding:13px 14px}
+.stat b{display:block; font-family:"Newsreader",Georgia,serif; font-size:26px; font-weight:600; line-height:1.05; color:var(--ink); font-variant-numeric:tabular-nums}
+.stat span{display:block; font-size:11.5px; color:var(--text-2); line-height:1.35; margin-top:5px}
+
+/* decisions + Q&A */
+details{border:1px solid var(--rule); border-radius:8px; background:var(--surface); margin:0 0 9px; overflow:hidden}
+details[open]{border-color:var(--rule-2)}
+summary{
+  cursor:pointer; list-style:none; padding:13px 16px; font-weight:500; font-size:15px;
+  display:flex; gap:11px; align-items:flex-start; line-height:1.42;
+}
+summary::-webkit-details-marker{display:none}
+summary::after{
+  content:"+"; margin-left:auto; font-family:"IBM Plex Mono",monospace; color:var(--text-3);
+  font-size:15px; line-height:1.3; flex:none;
+}
+details[open] summary::after{content:"\2212"}
+summary:hover{background:var(--surface-2)}
+.tag{
+  flex:none; font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:600;
+  padding:3px 7px; border-radius:4px; margin-top:2px; background:var(--surface-2); color:var(--text-2);
+}
+.tag.d{background:var(--accent-soft); color:var(--accent)}
+.tag.p{background:var(--ok-soft); color:var(--ok)}
+.tag.w{background:var(--warn-soft); color:var(--warn)}
+.dbody{padding:2px 16px 16px; border-top:1px solid var(--rule)}
+.dbody > *:first-child{margin-top:14px}
+.dbody p:last-child, .dbody ul:last-child{margin-bottom:0}
+.say{border-left:2px solid var(--accent); padding:2px 0 2px 14px; margin:14px 0 0; color:var(--text); font-family:"Newsreader",Georgia,serif; font-size:16.5px; line-height:1.55; font-style:italic}
+.say strong{font-style:normal; font-family:"IBM Plex Sans",sans-serif; font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:4px; font-weight:600}
+
+.toolbar{display:flex; gap:9px; flex-wrap:wrap; align-items:center; margin:0 0 16px}
+.toolbar input{
+  flex:1 1 220px; min-width:0; font:inherit; font-size:14px; padding:8px 12px; color:var(--text);
+  background:var(--surface); border:1px solid var(--rule); border-radius:6px;
+}
+.toolbar input:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:transparent}
+.toolbar button{
+  font:inherit; font-size:13px; cursor:pointer; padding:8px 13px; color:var(--text-2);
+  background:var(--surface); border:1px solid var(--rule); border-radius:6px;
+}
+.toolbar button:hover{color:var(--text); border-color:var(--rule-2)}
+.count{font-size:12.5px; color:var(--text-3); font-variant-numeric:tabular-nums}
+details[hidden]{display:none !important}
+
+.kv{display:grid; grid-template-columns:auto 1fr; gap:4px 16px; font-size:14px; margin:0 0 14px; max-width:68ch}
+.kv dt{font-weight:600; color:var(--text-2)}
+.kv dd{margin:0}
+
+hr.soft{border:0; border-top:1px solid var(--rule); margin:26px 0}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .rail{display:none}
+  .topnav{
+    display:block; position:sticky; top:env(safe-area-inset-top, 0px); z-index:5;
+    background:var(--sunk); border-bottom:1px solid var(--rule);
+  }
+  .topnav summary{font-family:"Newsreader",Georgia,serif; font-weight:600; font-size:16px}
+  .topnav > details{border:0; border-radius:0; margin:0; background:transparent}
+  .topnav nav{display:flex; flex-direction:column; padding:0 10px 14px}
+  .topnav a{text-decoration:none; color:var(--text-2); font-size:14px; padding:7px 10px; border-radius:5px}
+  .topnav a .n{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--text-3); margin-right:8px}
+  main{padding:26px 16px 90px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+</style>
+
+<div class="topnav">
+  <details>
+    <summary>Contents</summary>
+    <nav id="topnav-links"></nav>
+  </details>
+</div>
+
+<div class="shell">
+<aside class="rail">
+  <p class="rail-brand">Schwa Defence Handbook</p>
+  <p class="rail-sub">Kaustubh Pandey &middot; 2025PA17326</p>
+  <nav id="rail-links"></nav>
+  <div class="rail-foot">
+    Every figure here comes from the project's own logs, not from a dataset card or an estimate.
+    <button class="tbtn" id="theme">Switch theme</button>
+  </div>
+</aside>
+
+<main>
+
+<section id="s0">
+  <p class="eyebrow">Start here</p>
+  <h1>The whole project, and how to defend it</h1>
+  <p class="lede">Written to be read twice. The first pass gives you the argument; the second gives you the numbers, the mathematics and the answer to every question an examiner is likely to reach for.</p>
+
+  <h3>The project in six sentences</h3>
+  <p>Devanagari writes consonants that carry an unwritten vowel, the schwa. Hindi deletes some of those vowels when it speaks and keeps others, and nothing in the spelling tells you which. The standard fix is a grapheme-to-phoneme front end that applies a deletion rule before the text ever reaches a model. Modern neural text-to-speech is trained end to end and might learn that distinction from audio by itself, in which case the front end is unnecessary engineering. Nobody has measured whether it does, because no published study holds architecture, data, budget, vocoder and evaluation fixed and moves only the input representation. This project builds that measurement, adds Marathi as a same-script control so that the result cannot be confused with a general difficulty of Devanagari, and repeats it across three architectures and five training-data sizes.</p>
+
+  <h3>Five numbers to have cold</h3>
+  <div class="stats">
+    <div class="stat"><b>17</b><span>training runs in the plan, 136 GPU-hours</span></div>
+    <div class="stat"><b>9 h</b><span>top rung of the data ladder, matched in both languages</span></div>
+    <div class="stat"><b>75</b><span>symbols in the shared phone inventory; Hindi uses 72, Marathi 67</span></div>
+    <div class="stat"><b>0</b><span>unknown symbols over 870,547 phone tokens</span></div>
+    <div class="stat"><b>16.5%</b><span>of Hindi word tokens carry punctuation, which is what made the worst bug matter</span></div>
+  </div>
+
+  <div class="note accent">
+    <p class="note-k">The sentence to open with</p>
+    <p>Say <span class="dv">नमक</span> and <span class="dv">नमकीन</span> out loud. Both are written with no vowel sign after the second consonant. One is <span class="ipa">nəm<b>ə</b>k</span> and the other is <span class="ipa">nəmkiːn</span>. My question is whether a neural model needs to be told that, or works it out from data.</p>
+  </div>
+
+  <h3>How to use this guide</h3>
+  <p>Parts 1 to 5 are the subject knowledge: speech synthesis, Devanagari phonology, the three architectures, alignment, and the mathematics behind each metric. Part 6 is the experimental design. Part 7 is every decision you have made so far, each with the counter-argument someone will raise and the answer. Part 8 is the three defects the apparatus found, which are the strongest evidence you have that the work is being checked. Part 9 lists the weaknesses to volunteer before anyone asks. Part 10 is a searchable question bank, collapsed so you can test yourself.</p>
+</section>
+
+
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">Part 1</span><h2>What a text-to-speech system actually is</h2></div>
+  <p>You will be asked to explain the pipeline before anything else. Keep it to three stages and name what crosses each boundary.</p>
+
+  <div class="grid3">
+    <div class="card">
+      <h4>1. Front end</h4>
+      <p>Text in, symbols out. Normalisation, number and abbreviation expansion, then either graphemes straight through or a conversion to phonemes. This is the stage the whole project is about.</p>
+    </div>
+    <div class="card">
+      <h4>2. Acoustic model</h4>
+      <p>Symbols in, an acoustic representation out, normally a mel spectrogram. It has to decide how long each symbol lasts, which is the alignment problem.</p>
+    </div>
+    <div class="card">
+      <h4>3. Vocoder</h4>
+      <p>Mel spectrogram in, waveform out. A mel spectrogram throws away phase, so the vocoder has to invent it plausibly.</p>
+    </div>
+  </div>
+
+  <h3>The mel spectrogram, and why everyone stops there</h3>
+  <p>A waveform at 22.05 kHz is 22,050 numbers per second. A mel spectrogram takes short overlapping windows of that waveform, takes the magnitude of the Fourier transform of each, and projects the frequency axis onto a mel scale, which is roughly linear below 1 kHz and logarithmic above it because that matches how human pitch perception spaces frequencies. With a hop of 256 samples and 80 mel bins you get about 86 frames per second of 80 numbers each, so you have compressed the signal by a factor of about three while keeping almost everything a listener notices. Splitting the problem at the mel spectrogram means the acoustic model predicts linguistic content and prosody, and the vocoder handles waveform realism, and the two can be trained and swapped independently.</p>
+  <p>The number to remember for this project: 15 seconds at 22.05 kHz with hop 256 is 1,292 mel frames, which is why the length filter sits at 15 seconds and not higher.</p>
+
+  <h3>Four families of acoustic model</h3>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th>Family</th><th>How it generates</th><th>Cost</th><th>Example</th></tr>
+    <tr><td>Autoregressive</td><td>One frame at a time, conditioned on the frames already produced</td><td>Slow, and errors compound into skips and repeats</td><td>Tacotron 2</td></tr>
+    <tr><td>Non-autoregressive</td><td>All frames in one forward pass, given explicit durations</td><td>Fast and stable, but needs a duration signal from somewhere</td><td>FastSpeech 2</td></tr>
+    <tr><td>Flow based</td><td>An invertible map between a simple distribution and the data</td><td>Exact likelihood, heavier parameter count</td><td>VITS, Glow-TTS</td></tr>
+    <tr><td>Flow matching or diffusion</td><td>Learns a vector field that transports noise to data, solved as an ODE at inference</td><td>Few solver steps, very small models</td><td>Matcha-TTS</td></tr>
+  </table>
+  </div>
+  <p>The three architectures in this study are deliberately one from each of the last three families. That is not a survey for its own sake; it is so that a claim about the front end can be stated as holding across generation paradigms rather than as a quirk of one.</p>
+
+  <h3>Where the front end sits</h3>
+  <p>The front end decides what the model's embedding table is indexed by. With graphemes, the table has one row per Devanagari character and the model must learn from audio that a consonant character sometimes carries a vowel and sometimes does not, and that context decides. With phonemes, the deletion has already happened, so the symbol sequence is closer to what is actually spoken and the model's job is smaller. The question is whether that smaller job produces measurably better speech, and whether the gap depends on how much data you have.</p>
+</section>
+
+
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">Part 2</span><h2>Devanagari, the inherent vowel, and the schwa rule</h2></div>
+
+  <h3>Abugida, not alphabet</h3>
+  <p>Writing systems divide roughly three ways. An alphabet writes consonants and vowels as equal citizens, so Latin writes the a in cat. A syllabary gives each syllable its own sign, as Japanese kana does. An abugida writes consonants as full letters and vowels as marks attached to them, and gives every consonant one default vowel that is not written at all. Devanagari is an abugida and its default vowel is the schwa, <span class="ipa">ə</span>.</p>
+  <p>So <span class="dv">क</span> is not the sound k. It is <span class="ipa">kə</span>. To write bare k you add a virama, <span class="dv">क्</span>. To write a different vowel you add a matra, so <span class="dv">का</span> is <span class="ipa">kaː</span> and <span class="dv">कि</span> is <span class="ipa">ki</span>. The vowel letters <span class="dv">अ आ इ</span> and the rest are used only when a vowel starts a word.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>The marks you must be able to name</h4>
+      <dl class="kv">
+        <dt><span class="dv">ा ि ी ु</span></dt><dd>Matra, a dependent vowel sign that replaces the inherent schwa</dd>
+        <dt><span class="dv">्</span></dt><dd>Virama or halant, which removes the inherent vowel and forms a consonant cluster</dd>
+        <dt><span class="dv">ं</span></dt><dd>Anusvara, a nasal that assimilates to the following consonant's place</dd>
+        <dt><span class="dv">ँ</span></dt><dd>Chandrabindu, which nasalises the vowel itself</dd>
+        <dt><span class="dv">ः</span></dt><dd>Visarga, a voiceless breath, realised as <span class="ipa">h</span></dd>
+        <dt><span class="dv">़</span></dt><dd>Nukta, which marks a borrowed sound, mostly Perso-Arabic</dd>
+        <dt><span class="dv">ऽ</span></dt><dd>Avagraha, marking an elided initial vowel</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h4>Anusvara is a real decision, not a lookup</h4>
+      <p>The anusvara has no fixed sound. It takes the place of articulation of whatever follows it, so it is <span class="ipa">n</span> before a dental, <span class="ipa">m</span> before a labial, <span class="ipa">ŋ</span> before a velar. The converter resolves it by looking at the next segment, which means the anusvara cannot be handled by a character-to-symbol table. This is one concrete reason the front end has to segment before it maps.</p>
+    </div>
+  </div>
+
+  <h3>The schwa deletion rule</h3>
+  <p>Hindi deletes many inherent schwas in speech but writes none of the deletions. The rule most implementations use comes from Narasimhan, Sproat and Kiraz (2004): delete a schwa in the context V C _ C V, applied iteratively from right to left. In words, a schwa disappears when it sits between two consonants that each have a vowel on their far side. There is a separate and simpler rule for the word-final schwa, which deletes in Hindi almost unconditionally.</p>
+  <p>Two things about the rule matter more than the rule itself, and both are things to say when challenged.</p>
+  <p>The first is that it is iterative, so the order is part of the definition. Deleting one schwa changes the context of its neighbour, which can either enable or block the next deletion. The second is that it runs right to left rather than left to right, because the word-final deletion has to happen first for the rest to come out correctly.</p>
+
+  <h4>Worked example: <span class="dv">नमक</span>, and why order decides it</h4>
+  <div class="deriv">
+    <table>
+      <tr><td>written</td><td><span class="dv">नमक</span> = n + m + k, three consonants, no vowel signs at all</td></tr>
+      <tr><td>after segmentation</td><td><span class="ipa">n<b>ə</b> m<b>ə</b> k<b>ə</b></span>, three inherent schwas made explicit</td></tr>
+      <tr><td>word-final rule</td><td><span class="ipa">nə mə k<span class="del">ə</span></span> &mdash; the final schwa goes</td></tr>
+      <tr><td>V C _ C V on m</td><td>right context is now k with no vowel after it, so the pattern fails. <span class="keep">The schwa survives.</span></td></tr>
+      <tr><td>result</td><td><span class="ipa">nəmək</span>, namak</td></tr>
+    </table>
+  </div>
+
+  <h4>Worked example: <span class="dv">नमकीन</span>, the same word plus a suffix</h4>
+  <div class="deriv">
+    <table>
+      <tr><td>written</td><td><span class="dv">नमकीन</span> = n + m + k with an ii matra + n</td></tr>
+      <tr><td>after segmentation</td><td><span class="ipa">n<b>ə</b> m<b>ə</b> kiː n</span> &mdash; only two inherent schwas, because k already has its vowel</td></tr>
+      <tr><td>V C _ C V on m</td><td>left is <span class="ipa">ə</span> after n, right is k followed by <span class="ipa">iː</span>. Pattern matches. <span class="del">Deleted.</span></td></tr>
+      <tr><td>V C _ C V on n</td><td>right is m, which now has no vowel. Pattern fails. <span class="keep">Survives.</span></td></tr>
+      <tr><td>result</td><td><span class="ipa">nəmkiːn</span>, namkeen</td></tr>
+    </table>
+  </div>
+  <p>The pair is the entire thesis in two words. The first three letters are identical; the pronunciation of the second letter is not. No amount of looking at <span class="dv">नमक</span> in isolation tells you that.</p>
+
+  <h4>Worked example: <span class="dv">समझना</span>, where a deletion blocks another</h4>
+  <div class="deriv">
+    <table>
+      <tr><td>after segmentation</td><td><span class="ipa">s<b>ə</b> m<b>ə</b> dʒʱ<b>ə</b> naː</span></td></tr>
+      <tr><td>rightmost candidate, on dʒʱ</td><td>left is <span class="ipa">ə</span> after m, right is n followed by <span class="ipa">aː</span>. <span class="del">Deleted.</span></td></tr>
+      <tr><td>next candidate, on m</td><td>right is dʒʱ, which has just lost its vowel. Pattern fails. <span class="keep">Survives.</span></td></tr>
+      <tr><td>result</td><td><span class="ipa">səmədʒʱnaː</span>, samajhna, not samjhna</td></tr>
+    </table>
+  </div>
+  <div class="note">
+    <p class="note-k">The point of this example</p>
+    <p>If the rule ran left to right, the m schwa would be evaluated while dʒʱ still had its schwa, the pattern would match, and you would get samjhana. The direction is not a stylistic choice in the implementation. It is what makes the rule correct.</p>
+  </div>
+
+  <h3>Where the rule is known to fail</h3>
+  <ul>
+    <li><b>Morpheme boundaries.</b> A compound or a suffixed form can keep a schwa the rule deletes, because the boundary blocks it. The rule has no access to morphology.</li>
+    <li><b>Loanwords.</b> Perso-Arabic and English borrowings follow their source phonotactics more than Hindi's.</li>
+    <li><b>Optionality.</b> Some words have two acceptable pronunciations, which is why the elicitation sheet has a "varies" answer and not only yes and no.</li>
+  </ul>
+  <p>This residual error is why the 49-word stress-test set exists. The set is built from the contexts where the rule is contested, not from typical words, so it measures the part of the problem that is actually hard.</p>
+
+  <h3>Marathi: the same script with a different rule</h3>
+  <p>Marathi is written in Devanagari and shares almost all of Hindi's phone inventory, but it does not apply medial schwa deletion. It does delete the word-final schwa. That single difference is what makes it the right control: if the phoneme arm beats the grapheme arm by a lot in Hindi and by very little in Marathi, the effect belongs to schwa deletion and not to Devanagari as a script. In the implementation the whole control condition is one boolean flag, <code>delete_medial</code>, which is True for Hindi and False for Marathi. Everything else is the same code path.</p>
+
+  <h3>Unicode traps, which are not trivia</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>Combining marks are not alphanumeric</h4>
+      <p>Every matra and the virama are Unicode combining marks, categories Mn and Mc. Python's <code>str.isalnum()</code> returns False for them. Filtering a transcript on <code>isalnum()</code> therefore deletes every vowel sign in the corpus and leaves a bare consonant skeleton, silently. The normaliser filters on <code>unicodedata.category()</code> against an explicit set instead, and there is a named regression test for it.</p>
+    </div>
+    <div class="card">
+      <h4>Composition exclusions</h4>
+      <p>The precomposed nukta consonants U+0958 to U+095F are Unicode composition exclusions, which means NFC will not produce them. A literal pasted into source code is already decomposed, so a table keyed on those literals matches nothing and the nukta handling becomes a silent no-op. The inventory pins the explicit codepoints instead of the literals.</p>
+    </div>
+  </div>
+  <p>Both of these are worth volunteering. They are the kind of defect that produces a working program with wrong data, which is the failure mode this whole project's apparatus is built to catch.</p>
+</section>
+
+
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">Part 3</span><h2>The three architectures, in enough depth to defend the choice</h2></div>
+  <p>You picked three models from three generative families, all of them current, all of them trainable inside a small GPU budget. Be able to describe each one's generation mechanism, its duration mechanism, and its known weakness.</p>
+
+  <h3>FastSpeech 2</h3>
+  <p>A non-autoregressive transformer, roughly 27 million parameters. It encodes the symbol sequence, then a variance adaptor predicts a duration, a pitch contour and an energy value for each symbol. The length regulator repeats each encoder output according to its predicted duration to produce a frame-level sequence, and a decoder turns that into a mel spectrogram in a single forward pass.</p>
+  <p>Its advantage is stability and speed: no autoregression means no skipped or repeated words, and generation is one pass. Its weakness is that it is deterministic, so it predicts an average prosody rather than a sample from the distribution of plausible prosodies, and averaged prosody sounds flat. It also needs durations from somewhere, which is the alignment question in Part 4.</p>
+
+  <h3>VITS</h3>
+  <p>End to end, roughly 83 million parameters, and the only one of the three that produces a waveform directly with no separate vocoder. Three ideas stacked: a conditional variational autoencoder gives it a latent representation of the audio; a normalising flow makes the prior over that latent expressive enough to match text; and an adversarial loss on the decoder output makes the waveform realistic. Alignment is found by monotonic alignment search during training. Duration at inference comes from a stochastic duration predictor, so two generations of the same sentence differ in rhythm, which is closer to how people actually speak.</p>
+  <p>The practical fact for this project: the multilingual MMS checkpoints for Hindi and Marathi are VITS models, and they are natively 16 kHz. That is where the sampling-rate confound in Part 7 comes from.</p>
+
+  <h3>Matcha-TTS</h3>
+  <p>The smallest of the three, roughly 18 million parameters, built on optimal-transport conditional flow matching. Instead of learning to denoise across many diffusion steps, it learns a vector field that transports a simple noise distribution to the data distribution along near-straight paths, and at inference it solves that ODE with a small number of steps. Straighter paths mean fewer steps for the same quality, which is why it is fast despite being in the diffusion family. It uses monotonic alignment search, like VITS, so alignment is internal.</p>
+  <p>It is the newest of the three and the least studied on Indic languages, which is part of why it is here.</p>
+
+  <h3>HiFi-GAN, the vocoder</h3>
+  <p>A generative adversarial vocoder, about 14 million parameters in the V1 generator. The generator upsamples a mel spectrogram to a waveform with transposed convolutions, with multi-receptive-field fusion blocks so that several kernel sizes and dilations see the signal at once. Two discriminators judge it: a multi-period discriminator that reshapes the waveform into 2D by several prime periods to catch periodic structure, and a multi-scale discriminator that looks at the waveform at several downsampling rates.</p>
+  <p>One HiFi-GAN per language is trained on ground-truth mel spectrograms and shared by FastSpeech 2 and Matcha-TTS. That sharing is deliberate: if each acoustic model had its own vocoder, a difference in output could be a difference in vocoder quality rather than in acoustic modelling. VITS bypasses it entirely, which is a real asymmetry and is reported as one.</p>
+
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th>Model</th><th class="num">Params</th><th>Family</th><th>Duration</th><th>Vocoder</th><th>Main weakness</th></tr>
+    <tr><td>FastSpeech 2</td><td class="num">~27M</td><td>Non-autoregressive</td><td>Predicted, needs a target</td><td>Separate HiFi-GAN</td><td>Averaged, flat prosody</td></tr>
+    <tr><td>VITS</td><td class="num">~83M</td><td>VAE + flow + GAN</td><td>Stochastic predictor</td><td>Built in</td><td>Largest; harder to train on little data</td></tr>
+    <tr><td>Matcha-TTS</td><td class="num">~18M</td><td>Flow matching</td><td>Predicted, MAS aligned</td><td>Separate HiFi-GAN</td><td>Least validated on Indic data</td></tr>
+  </table>
+  </div>
+
+  <div class="note warn">
+    <p class="note-k">Why StyleTTS 2 was cut</p>
+    <p>It is a strong system, and on English benchmarks it is often the strongest. It was removed for compute, not for quality: it needs a style diffusion model and adversarial training with a large speech language model in the loop, which does not fit a 136 GPU-hour budget on free-tier accelerators. If asked, say exactly that. It is future work, and naming a cut honestly is better than pretending the shortlist was purely scientific.</p>
+  </div>
+</section>
+
+
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">Part 4</span><h2>Alignment, and why forced alignment was dropped</h2></div>
+  <p>Alignment is the problem of deciding which audio frames belong to which input symbol. Every acoustic model needs it, and how a model gets it is one of the real differences between the three.</p>
+
+  <h3>Three ways to get it</h3>
+  <div class="grid3">
+    <div class="card">
+      <h4>External forced alignment</h4>
+      <p>Train or borrow a separate acoustic model, normally a GMM-HMM system such as the Montreal Forced Aligner, and use it to mark phone boundaries in the training audio. The durations then become a supervised target.</p>
+    </div>
+    <div class="card">
+      <h4>Monotonic alignment search</h4>
+      <p>Introduced with Glow-TTS and used by VITS and Matcha-TTS. During training, dynamic programming finds the monotonic alignment between symbols and frames that maximises likelihood under the current model, so the alignment improves as the model does. No external tool.</p>
+    </div>
+    <div class="card">
+      <h4>Internal unsupervised aligner</h4>
+      <p>The approach in Badlani et al., "One TTS Alignment to Rule Them All" (ICASSP 2022). A soft attention alignment is learned jointly with the model and sharpened towards a hard monotonic path. It is what current FastSpeech 2 implementations use in place of external durations.</p>
+    </div>
+  </div>
+
+  <h3>The decision, and the three reasons in order</h3>
+  <p>Plan v2 had FastSpeech 2 taking durations from the Montreal Forced Aligner. That is now dropped and every model learns alignment internally.</p>
+  <ol>
+    <li><b>It was an uncontrolled asymmetry between architectures.</b> VITS and Matcha align internally. Giving FastSpeech 2 externally supervised durations hands one architecture information the other two never see, inside a comparison whose subject is the architecture. Whatever the results table then showed about FastSpeech 2 would be partly about its aligner.</li>
+    <li><b>It was asymmetric across languages too.</b> MFA publishes a pretrained Hindi acoustic model and no Marathi one. The Marathi arm would have used an aligner trained on 9 hours of its own data while Hindi used one trained on far more, and that difference would sit inside the control comparison, which is the one place it must not be.</li>
+    <li><b>It could not run here anyway.</b> <code>montreal-forced-aligner</code> installs from pip, but its Kaldi bindings have no aarch64 Linux wheel and will not build, because MFA ships through conda. Verified, not assumed.</li>
+  </ol>
+  <div class="note accent">
+    <p class="note-k">The limitation to volunteer</p>
+    <p>An internal aligner is generally weaker than MFA at very small data sizes, so the lowest rungs of the ladder may be hurt more than the top ones. That is a property of the ladder worth measuring, not a reason to put the asymmetry back. Say this before someone else does.</p>
+  </div>
+</section>
+
+
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">Part 5</span><h2>The metrics, with the mathematics</h2></div>
+  <p>A metric that is only ever run on real audio tends to be wrong in ways nobody notices until a reviewer asks. Both implemented metrics were checked against answers derivable on paper. Be able to state the formula, say what the measure is blind to, and say what it cannot see at all.</p>
+
+  <h3>Mel cepstral distortion</h3>
+  <p>MCD measures the distance between two mel cepstra, frame by frame, after aligning them. The mel cepstrum comes from taking the log of the mel filterbank energies and applying a discrete cosine transform, which decorrelates the bands and packs the spectral envelope into the low coefficients.</p>
+  <div class="deriv">
+    <table>
+      <tr><td>definition</td><td>MCD = K &middot; sqrt( &Sigma;<sub>d=1..D</sub> (c<sub>d</sub> &minus; &ccirc;<sub>d</sub>)&sup2; ), averaged over aligned frames</td></tr>
+      <tr><td>the constant</td><td>K = 10&radic;2 / ln 10</td></tr>
+      <tr><td>its value</td><td>6.1419</td></tr>
+      <tr><td>the sum starts at 1</td><td>c<sub>0</sub> is excluded</td></tr>
+      <tr><td>alignment</td><td>dynamic time warping, because a synthesised utterance is not frame-aligned with the reference</td></tr>
+    </table>
+  </div>
+  <p>The constant converts the natural-log cepstral distance into decibels and carries the square root of two from the symmetry of the DCT. It is a convention, and every comparable published MCD figure uses it.</p>
+
+  <h4>Why c<sub>0</sub> is dropped, and the test that proves the implementation does</h4>
+  <p>The zeroth cepstral coefficient is the mean of the log mel energies, which is overall loudness. Keeping it makes MCD partly a measure of gain, so a system that is merely quieter scores worse. Dropping it makes the measure blind to gain.</p>
+  <p>The argument is exact. Scaling a waveform by a constant multiplies its power spectrum by that constant squared. In the log domain that is a constant offset added to every mel band. A constant vector has energy only in the zeroth DCT coefficient. So the whole effect of the scaling lands in c<sub>0</sub>, and dropping c<sub>0</sub> removes it entirely.</p>
+  <div class="note ok">
+    <p class="note-k">Measured</p>
+    <p>Scaling the input waveform by 0.25 changes the computed MCD by less than 10<sup>&minus;6</sup> dB. If that test ever fails, MCD is partly measuring loudness and every MCD number in the paper is suspect.</p>
+  </div>
+
+  <h3>log-F0 root mean square error</h3>
+  <p>F0 is the fundamental frequency, the rate of vocal fold vibration, which is what you hear as pitch. It is extracted with pyin over a 60 to 500 Hz range, which also labels each frame voiced or unvoiced. The error is computed in the natural log domain over frames that both signals agree are voiced.</p>
+  <p>The reason for the log is that pitch perception is ratio based, not difference based. A 10 percent pitch error is the same perceptual error whether the speaker sits at 100 Hz or at 300 Hz, but a linear RMSE would call it 10 Hz for one and 30 Hz for the other, so any average across speakers would be dominated by the lower-pitched one. In the log domain a 10 percent error reads as ln(1.1) at both.</p>
+  <div class="note ok">
+    <p class="note-k">Measured</p>
+    <p>A 10 percent pitch error gives ln(1.1) at both 100 Hz and 300 Hz, exact to 10<sup>&minus;12</sup>.</p>
+  </div>
+
+  <h4>Two guards against silent bias</h4>
+  <p>Both of these are small and both are the difference between a metric and a metric you can trust.</p>
+  <ul>
+    <li>Mismatched F0 track lengths raise an error rather than being truncated to the shorter. Truncation would systematically favour a system that predicts shorter durations, because the part of the utterance it got wrong would never be scored.</li>
+    <li>A comparison with no commonly voiced frames returns NaN rather than 0.0. Zero would look like a perfect score, so an utterance the system rendered as silence would flatter it.</li>
+  </ul>
+  <p>Alongside the RMSE, the voiced/unvoiced error rate reports how often the two signals disagree about whether a frame is voiced at all. That catches a different failure: a system that gets pitch right where it is voiced but voices the wrong frames.</p>
+
+  <h3>ASR word error rate, with a floor</h3>
+  <p>Run a speech recogniser over the synthesised audio and compare its transcript with the text that was synthesised. It measures intelligibility, which is the one thing MCD cannot see: an utterance can be spectrally close to the reference and still say the wrong word.</p>
+  <p>The floor matters. The recogniser has its own error rate on real human speech, so an absolute WER number is meaningless on its own. Run the same recogniser over the ground-truth test audio first, get that figure, and report synthesised WER relative to it. Without the floor you cannot tell a poor system from a poor recogniser.</p>
+
+  <h3>Predicted mean opinion score</h3>
+  <p>UTMOSv2 and NISQA are neural models trained to predict the score human raters would give. They are cheap, they run over every test utterance, and they track human judgement well enough to rank systems in most cases. They are not a listening test. They were trained mostly on English data and on the kinds of artefacts that were common when they were built, so they can be wrong in a new language or on a new failure mode, and they should always be reported as predicted.</p>
+
+  <h3>The listening test</h3>
+  <p>The real subjective measure, and the only one that can settle a phoneme-versus-grapheme argument about pronunciation. Every stimulus is low-passed to 8 kHz first so that all systems are heard at equal bandwidth, which is the mitigation for the VITS sampling-rate issue in Part 7. Ground-truth audio is included as an anchor.</p>
+
+  <h3>Real time factor</h3>
+  <p>Generation time divided by the duration of the audio generated. Below 1.0 is faster than real time. It matters to the thesis because a practitioner choosing between architectures for a low-resource language cares about deployment cost, and because the three models differ by a factor of four in parameter count.</p>
+
+  <h3>What none of these metrics can see</h3>
+  <p>Worth having ready, because it is a natural follow-up. MCD is an average over frames and will not notice a single mispronounced word in a long utterance. F0 error says nothing about segmental quality. ASR-WER is insensitive to prosody, because a recogniser does not care how naturally a sentence is phrased. Predicted MOS gives one number with no diagnosis. The listening test is the only instrument that hears a schwa in the wrong place and calls it wrong, which is precisely why it is not optional for this project.</p>
+</section>
+
+
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">Part 6</span><h2>Experimental design and confound control</h2></div>
+  <p>This is the part the examiners will actually probe, because it is where a comparison study either holds or falls apart.</p>
+
+  <h3>One variable at a time</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>Held constant</h4>
+      <ul>
+        <li>Training budget: 100,000 steps, 12,000 mel frames per batch, identical learning rate, schedule, warmup, precision and gradient clipping</li>
+        <li>Speaker: one male voice per language, matched on pitch</li>
+        <li>Data: the same frozen, checksummed splits</li>
+        <li>Vocoder: one HiFi-GAN per language, shared</li>
+        <li>Evaluation: the same metrics on the same test set</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Varied</h4>
+      <ul>
+        <li>Input representation: phonemes or graphemes</li>
+        <li>Architecture: FastSpeech 2, VITS, Matcha-TTS</li>
+        <li>Training data quantity: five rungs from 9 hours to 10 minutes</li>
+        <li>Language: Hindi, with Marathi as the control</li>
+      </ul>
+    </div>
+  </div>
+
+  <h4>How "held constant" is enforced rather than remembered</h4>
+  <p><code>assert_budget_matched()</code> runs every time the 17 configuration files are generated. It compares max steps, batch frames, learning rate, schedule, warmup, precision and gradient clipping across every acoustic-model run and refuses to write configs if any of them differ. A second assertion refuses two runs whose settings hash identically under different run identifiers. If the first ever fails, the comparison is between architectures and budgets at the same time and the results table means nothing. It is an assertion, not a convention.</p>
+
+  <h3>The data ladder, and why nesting is the whole point</h3>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th>Rung</th><th class="num">Hindi utterances</th><th class="num">Marathi utterances</th></tr>
+    <tr><td>9 h</td><td class="num">4,793</td><td class="num">5,071</td></tr>
+    <tr><td>5 h</td><td class="num">2,668</td><td class="num">2,810</td></tr>
+    <tr><td>1 h</td><td class="num">541</td><td class="num">562</td></tr>
+    <tr><td>30 min</td><td class="num">265</td><td class="num">279</td></tr>
+    <tr><td>10 min</td><td class="num">86</td><td class="num">90</td></tr>
+  </table>
+  </div>
+  <p>Each rung is a strict subset of the one above it. The 10-minute set sits inside the 30-minute set, which sits inside the 1-hour set, and so on. That is achieved by ordering the training set once by hash and taking prefixes.</p>
+  <p>If each rung were sampled independently, the difference between 1 hour and 30 minutes would contain both a data-quantity effect and a sampling-variance effect, and there would be no way to separate them. Since the data-quantity effect is exactly what the ladder exists to measure, independent sampling would have made the ladder measure something other than its own subject.</p>
+
+  <h3>The control logic, stated as a two-by-two</h3>
+  <p>Say it this way when asked why Marathi:</p>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th></th><th>Large G2P effect in Marathi</th><th>Small G2P effect in Marathi</th></tr>
+    <tr><td><b>Large in Hindi</b></td><td>The effect is about Devanagari generally, or about the normaliser, not about schwa deletion</td><td>The effect is about schwa deletion. This is the result the design is built to detect</td></tr>
+    <tr><td><b>Small in Hindi</b></td><td>Something is wrong with the Hindi arm, because Marathi has the easier rule</td><td>Neural models absorb the front end. Also a real finding, and useful to practitioners</td></tr>
+  </table>
+  </div>
+  <p>No other language pairing gives this cleanly. A Hindi-versus-English comparison changes the script, the phonology, the corpus and the resource level at once.</p>
+
+  <h3>Splits, frozen and reproducible</h3>
+  <p>Membership in test, dev or train comes from a salted SHA-256 of the utterance identifier, not from a seeded shuffle. The difference matters: a seeded shuffle depends on the order in which the manifest happened to be written, so regenerating the manifest can quietly change the test set. Hashing the identifier does not. A rebuild reproduces <code>test.tsv</code> byte for byte.</p>
+  <p><code>SPLITS.lock</code> records the salt and a checksum for every file. <code>--verify</code> rehashes them, and rebuilding without <code>--force</code> is refused. Structural checks that run and pass: every ladder rung is a strict superset of the one below, test, dev and train are pairwise disjoint, and every rung lies inside train.</p>
+  <p>Test is 300 utterances and dev is 100 in each language, held out before any rung is cut.</p>
+
+  <h3>What counts as a finding</h3>
+  <p>The rule you have set for yourself, and the one to state out loud: no difference smaller than measured seed variance is reported as a finding. With one seed per cell, that variance floor has to come from replicating a single cell and generalising, which is weaker than three seeds throughout. Three seeds everywhere would cost 368 GPU-hours instead of 136. This is the honest argument for institutional GPU access and it is better made openly than defended when challenged.</p>
+</section>
+
+
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">Part 7</span><h2>Every decision, with its counter-argument</h2></div>
+  <p>Each card gives the decision, why it was taken, the strongest objection to it, and a line you can say. Expand as you study; the summaries alone make a revision list.</p>
+
+  <div class="toolbar">
+    <input id="q-dec" type="text" placeholder="Filter decisions" aria-label="Filter decisions">
+    <button id="dec-open" type="button">Expand all</button>
+    <button id="dec-close" type="button">Collapse all</button>
+    <span class="count" id="dec-count"></span>
+  </div>
+
+  <div id="dec-list">
+
+  <details><summary><span class="tag d">Scope</span>Sanskrit dropped; Marathi added as a same-script control</summary>
+  <div class="dbody">
+    <p><b>Why.</b> The synopsis paired Hindi with Sanskrit. Sanskrit TTS data sits behind a request form with unknown turnaround, so half the study depended on a single access decision outside your control. Worse, the pairing confounded three things at once: language, data quantity and corpus provenance. A difference between the Hindi and Sanskrit arms could have been any of them.</p>
+    <p><b>Objection.</b> The approved synopsis said Sanskrit, and changing it looks like avoiding difficulty.</p>
+    <p><b>Answer.</b> The replacement is a stronger design, not an easier one. Marathi differs from Hindi in the rule while holding the script, the corpus collection and the resource level fixed, which is what a control has to do. Sanskrit is recorded as future work and the change was approved by the supervisor.</p>
+    <div class="say"><strong>Say</strong>Marathi is a better control than Sanskrit because it differs in the phonological rule rather than in the resource level. That is the variable the study is about.</div>
+  </div></details>
+
+  <details><summary><span class="tag d">Design</span>Marathi is a control, not a second target language</summary>
+  <div class="dbody">
+    <p><b>Why.</b> The Marathi arm exists to answer one question: is the effect about schwa deletion or about Devanagari. It therefore runs only the two architectures needed for that comparison, not the whole matrix, and it does not get its own ladder.</p>
+    <p><b>Objection.</b> Then the study is not really multilingual, and the Marathi result is thin.</p>
+    <p><b>Answer.</b> Correct, and it is not claimed to be multilingual. Spending equal compute on Marathi would have bought a second bake-off rather than a cleaner inference about the first. The control needs enough runs to detect a difference in effect size, not a full replication.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Audio</span>22.05 kHz master, with 16 kHz derived for VITS</summary>
+  <div class="dbody">
+    <p><b>Why.</b> The synopsis specifies 22.05 kHz, which is the standard rate for TTS training and what HiFi-GAN configurations assume. Both rates are derived from the same gain-corrected 48 kHz source rather than by resampling one from the other, so neither inherits the other's resampling artefacts.</p>
+    <p><b>Objection.</b> The MMS VITS checkpoints are natively 16 kHz, so VITS output carries nothing above 8 kHz. Comparing it with 22.05 kHz systems on full-band MCD charges it for missing bandwidth rather than for worse modelling.</p>
+    <p><b>Answer.</b> That is exactly right, and the mitigation is built in rather than argued away. MCD is reported in two columns, full band and band-limited to 8 kHz, with the band-limited column as the headline. Listening stimuli are low-passed to 8 kHz for every system, so raters hear equal bandwidth. ASR-WER is unaffected because the recogniser resamples to 16 kHz regardless.</p>
+    <div class="say"><strong>Say</strong>The bandwidth difference is real and I report the band-limited comparison as the headline so it cannot flatter or penalise anyone silently.</div>
+  </div></details>
+
+  <details><summary><span class="tag d">Alignment</span>Forced alignment dropped; alignment learned inside every model</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Three reasons in order: it gave FastSpeech 2 supervision the other two architectures never receive, inside a comparison about architectures; MFA has a pretrained Hindi model and no Marathi one, which would have put an asymmetry inside the control arm; and its Kaldi bindings do not build on the target architecture.</p>
+    <p><b>Objection.</b> MFA durations are more accurate, so you have made FastSpeech 2 worse than it could be.</p>
+    <p><b>Answer.</b> Yes, in absolute terms, and that is the correct trade. The study compares architectures under matched conditions, so making one architecture better by giving it information the others lack would destroy the comparison it is part of. Every current FastSpeech 2 implementation uses an internal aligner anyway.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Data</span>Male speaker, speaker 1, in both languages</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Hours are equivalent either way: 10.89 and 10.80 hours for the male speakers against 10.73 and 11.19 for the female. Pitch decided it. The two male voices sit 17 Hz apart across the two languages; the female pair are 38 Hz apart. Matching on male leaves less acoustic difference between the Hindi and Marathi arms that has nothing to do with schwa deletion.</p>
+    <p><b>Objection.</b> The corpora carry no speaker key, so how do you know which is which, and choosing male is a gender-representation problem.</p>
+    <p><b>Answer.</b> The labels were recovered from median F0 over 25 sampled utterances per speaker, and the separation is 90 Hz in Hindi and 111 Hz in Marathi, far wider than any threshold ambiguity. It is reported as an inference from pitch, never as something the dataset says. On representation: the study is single-speaker by design because speaker identity would otherwise be another uncontrolled variable, and which single speaker is chosen is a matched-pair decision, not a claim about voices in general.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Data</span>Length filter 1 to 15 seconds, not 1 to 12</summary>
+  <div class="dbody">
+    <p><b>Why.</b> At 1 to 12 seconds no single Hindi speaker reaches a 10-hour top rung: 9.05 and 8.96 hours. At 1 to 15 seconds every candidate clears it. 15 seconds at 22.05 kHz with hop 256 is 1,292 mel frames, which all three architectures handle comfortably.</p>
+    <p><b>Objection.</b> Long utterances are usually broken rows, and a 127-second maximum looks like a data error.</p>
+    <p><b>Answer.</b> Checked rather than assumed. The 127.7-second item carries 1,600 characters, which is 12.5 characters per second, the corpus median. It is a long read, not a broken row. Transcript quality control found zero misaligned transcripts in either corpus, with characters per second tightly distributed and nothing outside 0.4 to 2.0 times the median.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Data</span>The ladder's top rung is 9 hours, not 10</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Silence trimming cost 5.5 percent in Hindi and 8.4 percent in Marathi, more than the plan assumed, and the frozen test and dev sets take another 1.1 hours between them. What remains is 9.53 hours of Hindi training audio and 9.16 of Marathi. Nine hours is the largest round figure both clear.</p>
+    <p><b>Objection.</b> Ten is the number in the plan and a round number reads better.</p>
+    <p><b>Answer.</b> Matching the rungs across languages matters more than a round figure. An unmatched top rung would put a data-quantity difference inside the control comparison, which is the one place it must not be.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Design</span>The ladder is nested, not independently sampled</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Each rung is a prefix of a single hash ordering, so every smaller set is contained in every larger one.</p>
+    <p><b>Objection.</b> Independent samples at each size would give a variance estimate for free.</p>
+    <p><b>Answer.</b> It would also mix sampling variance into the data-quantity effect, which is the thing the ladder measures. Variance belongs in the seed replication, not in the axis under study.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Front end</span>Punctuation kept as prosody tokens, folded to four marks</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Punctuation is the only prosodic signal the text carries, and it appears on roughly one word token in six. Stripping it would remove the model's only cue for phrasing. It is folded to comma, full stop, question mark and exclamation mark so that rare marks do not become near-empty embedding rows.</p>
+    <p><b>Objection.</b> Keeping it caused the worst bug in the project.</p>
+    <p><b>Answer.</b> It did, and the fix was to peel punctuation from the word edges before the schwa stage and restore it after, not to throw the signal away. Part 8 has the full story. There is now a parametrised invariance test over nine words and four marks in both languages.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Front end</span>One shared 75-symbol inventory for both languages</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Hindi uses 72 of the 75 and Marathi 67, and Marathi's inventory is a strict subset of Hindi's. It is missing only <span class="ipa">rĩ x ɔː̃ ɣ ɽ</span>, all Perso-Arabic or marginal. Nothing occurs in Marathi that is absent from Hindi, so the control comparison sits in one symbol space with no Marathi-only embedding rows.</p>
+    <p><b>Objection.</b> A shared inventory could blur genuine phonetic differences between the languages.</p>
+    <p><b>Answer.</b> The subset relation is measured, not assumed, over all 11,044 transcripts. If Marathi had needed symbols Hindi does not have, the two arms would have had different embedding tables and the control comparison would have been weaker.</p>
+    <p><b>Known weakness.</b> Marathi has <span class="ipa">ɽʱ</span> once, <span class="ipa">z</span> once and <span class="ipa">q</span> twice across the whole corpus. Those are embedding rows with almost no gradient. Merging nukta consonants for Marathi is the obvious mitigation and is left as a training-configuration decision rather than applied silently.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Front end</span>The number expander refuses rather than guessing</summary>
+  <div class="dbody">
+    <p><b>Why.</b> It expands 0 to 20, the exact tens, 21 to 25, and round hundreds and thousands, and raises an exception on anything else. Digits appear in 15 Marathi utterances and none in Hindi.</p>
+    <p><b>Objection.</b> Refusing means losing 15 usable utterances.</p>
+    <p><b>Answer.</b> A wrong number word is a pronunciation error baked into the training data and invisible afterwards, because nothing downstream checks it. Fifteen utterances is a cheap price for not corrupting the corpus, and the exception makes the gap visible instead of silent.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Method</span>Gold pronunciations elicited by yes/no/varies, not by IPA transcription</summary>
+  <div class="dbody">
+    <p><b>Why.</b> The sheet shows each word with the candidate vowel written in place and numbered, as in <code>n(a1)m(a2)kiin(a3)</code>, and asks the speaker whether that specific sound is present. It never shows the rule's prediction. Asking non-phoneticians to write IPA would add transcription noise unrelated to the question being asked.</p>
+    <p><b>Objection.</b> The speakers are answering a leading question about a sound you have written down for them.</p>
+    <p><b>Answer.</b> The alternative is worse. The merge step turns their yes/no/varies answers into gold forms through the same converter, so the symbols come from the inventory and only the judgement is human. A "varies" option exists precisely because some words have two acceptable pronunciations.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Method</span>The project owner cannot be one of the scored speakers</summary>
+  <div class="dbody">
+    <p><b>Why.</b> While learning to read the sheet you saw worked answers for <span class="dv">नमकीन</span> and <span class="dv">समझना</span>, both items in the 49-word set. Anyone who has seen the answers cannot supply an independent judgement on them.</p>
+    <p><b>Objection.</b> You are a native speaker and that is a wasted resource.</p>
+    <p><b>Answer.</b> Coordinating rather than participating is the cleaner role in any case. The whole value of the gold set is that it was produced by speakers who had not seen the rule's prediction.</p>
+  </div></details>
+
+  <details><summary><span class="tag w">Compute</span>One seed per cell</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Three seeds throughout would cost 368 GPU-hours against 136, which does not fit free-tier accelerators.</p>
+    <p><b>Objection.</b> Without replication you cannot tell a real difference from run-to-run noise.</p>
+    <p><b>Answer.</b> Agreed, and it is stated as a limitation rather than defended. The rule is that no difference smaller than measured seed variance is reported as a finding, and with one seed per cell that floor rests on replicating a single cell and generalising. This is the honest case for institutional GPU access, and if that access arrives the first thing it buys is seeds, not more architectures.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Audio</span>Loudness normalised to &minus;23 LUFS</summary>
+  <div class="dbody">
+    <p><b>Why.</b> ITU-R BS.1770 loudness, the EBU R128 reference level. Peak-normalising instead would leave perceived loudness varying with the dynamics of each utterance, and loudness differences would then appear in the metrics as if they were quality differences.</p>
+    <p><b>Verification.</b> Both sample rates land at exactly &minus;23.00 LUFS on a checked sample, the 22.05 and 16 kHz copies agree on duration to under a millisecond, peaks stay under 0.995, and the 50 ms edge padding is present. The peak guard fired once in Hindi, so it is not dead code.</p>
+  </div></details>
+
+  <details><summary><span class="tag d">Compute</span>Free-tier Kaggle accelerators with checkpoint resume</summary>
+  <div class="dbody">
+    <p><b>Why.</b> No institutional GPU access at the time of planning. Kaggle gives a fixed weekly quota with a session time limit, so the cost of a killed session has to be bounded.</p>
+    <p><b>Objection.</b> Sessions get killed and quota runs out, so this is fragile.</p>
+    <p><b>Answer.</b> Which is exactly why resume-from-checkpoint is verified before any real training. The smoke test pushes a checkpoint to the Hub, deletes it locally, pulls it back and compares SHA-256, because an untested resume path is not a safety net. It also checks that a GPU is actually attached, which on a non-verified account it silently is not, and measures a fixed fp16 matmul so that the step budget comes from a measurement rather than a guess.</p>
+  </div></details>
+
+  <details><summary><span class="tag w">Scope</span>StyleTTS 2 cut from the architecture list</summary>
+  <div class="dbody">
+    <p><b>Why.</b> Compute. Style diffusion plus adversarial training with a large speech language model in the loop does not fit the budget.</p>
+    <p><b>Objection.</b> It is currently among the strongest systems, so the comparison is missing the best model.</p>
+    <p><b>Answer.</b> True, and it is listed as future work. The study's claim is about the front end's contribution across generation paradigms, and three paradigms are already represented. Adding a fourth model would have cost roughly a third of the budget and bought no new paradigm.</p>
+  </div></details>
+
+  </div>
+</section>
+
+
+<section id="s8">
+  <div class="sec-head"><span class="sec-num">Part 8</span><h2>Three defects, and why they are your best evidence</h2></div>
+  <p>A progress review that lists only completed tasks says nothing about rigour. Volunteering a bug that would have corrupted the headline result, and explaining how it was caught, is the strongest thing you can show. None of these three was found by the unit tests. All three were found by running the apparatus over real data or by watching a person use it.</p>
+
+  <h3>One: punctuation was rewriting words</h3>
+  <p>Punctuation was kept as a prosody token, which was right, but it stayed attached to the word through the schwa stage, which was wrong. The failure is double. A trailing comma means the word-final schwa is no longer word-final, so the final-deletion rule does not fire and the schwa survives. That survival then supplies the right-hand vowel that lets the schwa to its left delete. So <span class="dv">नमक</span> is <span class="ipa">nəmək</span> but <span class="dv">नमक,</span> came out <span class="ipa">nəmkə</span>, which is a different word.</p>
+  <p>16.5 percent of Hindi word tokens and 14.9 percent of Marathi carry punctuation. The corruption would have fallen on the phoneme arm alone, because the grapheme path never touches the schwa stage, so the phoneme-versus-grapheme comparison would have been measuring the bug. Punctuation is now peeled from the word edges before the schwa stage and restored after, with a parametrised invariance test over nine words and four marks in both languages.</p>
+
+  <h3>Two: a training run was in the plan twice</h3>
+  <p>The ladder's 9-hour rung was a second copy of the main run. r01 and r07 trained the same architecture on the same data under the same budget and would have cost 10 GPU-hours to produce a number already in hand. It was invisible because the run identifier sat inside the configuration hash, which makes two identical runs look distinct.</p>
+  <p>Run identifier is now excluded from the hash and an assertion refuses two runs whose settings hash identically. The plan went from 19 runs and 146 GPU-hours to 17 and 136.</p>
+
+  <h3>Three: the elicitation sheet leaked its own answers</h3>
+  <p>The three worked examples at the top of the sheet were <span class="dv">घर</span>, <span class="dv">नमकीन</span> and <span class="dv">कमल</span>. All three were items in the 49-word test set, so the sheet was handing every participant the correct answers to three of the words it was about to test them on, and nothing in the merge would have flagged it. Replaced with <span class="dv">कपड़ा</span>, <span class="dv">बर्तन</span> and <span class="dv">पानी</span>, which cover a deletion, a retention and a word with no slots at all. <code>check_examples_are_outside</code> now runs at sheet-generation time and refuses to write a sheet whose examples appear in the set.</p>
+
+  <div class="note accent">
+    <p class="note-k">A fourth, worth mentioning if instruments come up</p>
+    <p>Before that, the sheet itself was misread by its first reader. On <span class="dv">नमकीन</span> shown as <code>n[1]m[2]kiin[3]</code>, the reader took the numbered blanks to be asking whether a vowel exists anywhere in that syllable, so slot 3 was nearly marked yes because of the written ii, and slot 1 was nearly marked no even though the word is pronounced with an audible a. Both errors are silent, and with two or three speakers reading it the same way the gold set would have been confidently wrong. The sheet now writes the candidate vowel in place as <code>n(a1)m(a2)kiin(a3)</code>, states that plainly written vowels are not in question, and carries worked examples. An instrument needs piloting on a real reader, not just unit tests.</p>
+  </div>
+</section>
+
+
+<section id="s9">
+  <div class="sec-head"><span class="sec-num">Part 9</span><h2>Weaknesses to volunteer before you are asked</h2></div>
+  <p>Saying these first is worth more than defending them later. Each one has a reason it is acceptable and a sentence that says so.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>The 49 gold pronunciations are not yet validated</h4>
+      <p>The rule scores 49 out of 49 against the gold set, and that figure is not a result. The rule implementation and the gold forms were written by the same person in the same sitting, so the number measures self-consistency. The scorer refuses to report a validated figure until independent speakers have checked the items.</p>
+    </div>
+    <div class="card">
+      <h4>One seed per cell</h4>
+      <p>The variance floor rests on replicating one cell and generalising. No difference smaller than that floor is reported as a finding.</p>
+    </div>
+    <div class="card">
+      <h4>Rare phones in Marathi</h4>
+      <p>Three phones occur fewer than three times in the whole corpus, so those embedding rows receive almost no gradient. Merging nukta consonants for Marathi is the mitigation and is a configuration decision, not something applied silently.</p>
+    </div>
+    <div class="card">
+      <h4>The internal aligner at small data sizes</h4>
+      <p>Weaker than forced alignment when data is scarce, so the lowest ladder rungs may suffer more than the top ones. That is something the ladder can measure.</p>
+    </div>
+    <div class="card">
+      <h4>Single speaker, single style</h4>
+      <p>One voice per language and read speech only. Nothing here generalises to conversational speech or to speaker variation, and it is not claimed to.</p>
+    </div>
+    <div class="card">
+      <h4>VITS is not vocoder-matched</h4>
+      <p>FastSpeech 2 and Matcha share a HiFi-GAN; VITS generates its waveform itself. That asymmetry is inherent to the architecture and is reported rather than papered over.</p>
+    </div>
+    <div class="card">
+      <h4>Predicted MOS is not MOS</h4>
+      <p>UTMOSv2 and NISQA were trained mostly on English and on older artefact types. They are reported as predicted and the listening test is what settles subjective claims.</p>
+    </div>
+    <div class="card">
+      <h4>Nothing has been trained yet</h4>
+      <p>Everything established so far is a property of the corpus, the front end or the measuring apparatus. That is deliberate sequencing, but the training wrappers are still to be written and they need no GPU.</p>
+    </div>
+  </div>
+</section>
+
+
+<section id="s10">
+  <div class="sec-head"><span class="sec-num">Part 10</span><h2>Question bank</h2></div>
+  <p>Grouped by the kind of person asking. Collapsed so you can test yourself: read the question, answer it out loud, then open it. Filter by any word to drill a topic.</p>
+
+  <div class="toolbar">
+    <input id="q-qa" type="text" placeholder="Filter questions, for example: schwa, MCD, seeds, Marathi" aria-label="Filter questions">
+    <button id="qa-open" type="button">Reveal all</button>
+    <button id="qa-close" type="button">Hide all</button>
+    <span class="count" id="qa-count"></span>
+  </div>
+
+  <div id="qa-list">
+
+  <h3>The phonetician</h3>
+
+  <details><summary><span class="tag p">Phonetics</span>Is schwa deletion not a solved problem?</summary>
+  <div class="dbody"><p>The rule is well studied and has been since 2004. What is not studied is whether a modern end-to-end model needs the rule at all. Those are different questions, and the second one is mine. If the models absorb it, everyone building Indic TTS can stop maintaining a front end; if they do not, the field should stop defaulting to character input.</p></div></details>
+
+  <details><summary><span class="tag p">Phonetics</span>Why right to left, and does the direction actually matter?</summary>
+  <div class="dbody"><p>It matters and there is a worked case. In <span class="dv">समझना</span>, deleting the schwa on <span class="ipa">dʒʱ</span> first removes the right-hand vowel that the m schwa would have needed, so the m schwa is blocked and you get samajhna. Left to right you would evaluate m first, find a vowel on both sides, delete it, and get samjhana, which is wrong. The word-final deletion also has to happen before the medial rule for <span class="dv">नमक</span> to come out as namak.</p></div></details>
+
+  <details><summary><span class="tag p">Phonetics</span>What about the cases the rule gets wrong?</summary>
+  <div class="dbody"><p>Residual errors cluster at morpheme boundaries, where a compound or a suffix blocks a deletion the rule takes, and in loanwords, which follow their source phonotactics. The rule has no morphological information. That residual is exactly why the 49-item set is built from contested contexts rather than typical words, and why the elicitation sheet has a "varies" option.</p></div></details>
+
+  <details><summary><span class="tag p">Phonetics</span>Why not just use a pronunciation lexicon?</summary>
+  <div class="dbody"><p>A lexicon does not generalise to unseen words, and Hindi is morphologically productive, so out-of-vocabulary rates on running text are high. The front end does support a lexicon override for known exceptions, which is the right place for the irregular cases, but the rule has to handle everything else.</p></div></details>
+
+  <details><summary><span class="tag p">Phonetics</span>How does the front end handle the anusvara?</summary>
+  <div class="dbody"><p>By looking at what follows. The anusvara has no fixed sound; it takes the place of articulation of the next consonant, so it is <span class="ipa">n</span> before a dental, <span class="ipa">m</span> before a labial, <span class="ipa">ŋ</span> before a velar. That is a segmentation-stage decision, which is one of the reasons the converter segments before it maps rather than using a character table.</p></div></details>
+
+  <details><summary><span class="tag p">Phonetics</span>Marathi really has no medial schwa deletion at all?</summary>
+  <div class="dbody"><p>Not as a productive rule of the kind Hindi has. It does delete the word-final schwa, which is why the control condition switches off medial deletion and leaves final deletion on. If someone argues about marginal cases, the answer is that the control does not require Marathi to have zero deletion; it requires the effect to be much smaller, which is what the design detects.</p></div></details>
+
+  <h3>The machine learning examiner</h3>
+
+  <details><summary><span class="tag p">Models</span>Why these three architectures and not others?</summary>
+  <div class="dbody"><p>One from each current generative family: non-autoregressive with explicit durations, flow-based end to end, and flow matching. That lets the conclusion be stated as holding across paradigms rather than as a quirk of one design. All three fit the compute budget. StyleTTS 2 was cut for compute and is named as future work.</p></div></details>
+
+  <details><summary><span class="tag p">Models</span>VITS has three times the parameters of the others. Is that fair?</summary>
+  <div class="dbody"><p>The budget that is held equal is the training budget, not the parameter count: identical steps, batch frames, learning rate, schedule, precision and clipping. Equalising parameters instead would mean training a different VITS from the one anyone actually uses. The comparison is between architectures as they are deployed, and parameter count is part of what an architecture is. It is also why real time factor is reported.</p></div></details>
+
+  <details><summary><span class="tag p">Models</span>How do you know the training budgets really are identical?</summary>
+  <div class="dbody"><p><code>assert_budget_matched()</code> runs every time the configuration files are generated and refuses to write them if any budget field differs across acoustic runs. A second assertion refuses two runs whose settings hash identically under different identifiers, and that one already caught a duplicated run worth 10 GPU-hours. It is enforced, not remembered.</p></div></details>
+
+  <details><summary><span class="tag p">Models</span>Why not fine-tune from a pretrained checkpoint everywhere?</summary>
+  <div class="dbody"><p>VITS does initialise from the MMS checkpoints, which is what makes the low rungs of the ladder feasible at all for it. The complication is that MMS is natively 16 kHz, so that arm carries a bandwidth difference, and the MCD reporting and the listening stimuli are both set up to neutralise it. For the other two there is no comparable Indic checkpoint, so pretraining is a property of the architecture arm rather than a variable I could hold fixed.</p></div></details>
+
+  <details><summary><span class="tag p">Models</span>What if the grapheme model just learns the rule from audio?</summary>
+  <div class="dbody"><p>That is one of the two outcomes the study is built to detect and it is a useful result, not a failure. It would mean that for Hindi, front-end engineering is optional above some data threshold, and the ladder tells you where that threshold is. The Marathi control then tells you whether the same holds when the rule is easier.</p></div></details>
+
+  <details><summary><span class="tag p">Models</span>Is 100,000 steps enough?</summary>
+  <div class="dbody"><p>It is enough for all three to converge on 9 hours of single-speaker data, which is what the published recipes indicate, and the smoke test measures actual throughput so that the step budget rests on a measurement. The stronger point is that it is the same for every run, so a difference in the results table cannot be a difference in training length.</p></div></details>
+
+  <h3>The reproducibility and systems examiner</h3>
+
+  <details><summary><span class="tag p">Method</span>How do I reproduce a number in your results table?</summary>
+  <div class="dbody"><p>Every results row carries a run identifier and a configuration hash, and every run is a YAML file in <code>configs/</code>. The splits are frozen with a salted SHA-256 over utterance identifiers, recorded in <code>SPLITS.lock</code> with a checksum per file, and <code>--verify</code> rehashes them. A rebuild reproduces <code>test.tsv</code> byte for byte.</p></div></details>
+
+  <details><summary><span class="tag p">Method</span>Why hash the identifier instead of using a seeded shuffle?</summary>
+  <div class="dbody"><p>A seeded shuffle depends on the order in which the manifest happened to be written, so regenerating the manifest can quietly change the test set. Hashing the utterance identifier does not depend on order at all, which is what makes the split reproducible across machines and across rebuilds.</p></div></details>
+
+  <details><summary><span class="tag p">Method</span>Where did your corpus figures come from?</summary>
+  <div class="dbody"><p>Measured over the full corpora, not from the dataset cards, which state neither hours nor speaker count nor sampling rate. The first estimate was extrapolated from 50 utterances and was 19 percent low for Hindi, 21.99 hours against 26.23 actual. That is recorded in the results log and it is the reason no figure in the report comes from a sample.</p></div></details>
+
+  <details><summary><span class="tag p">Method</span>Will this run on someone else's machine?</summary>
+  <div class="dbody"><p>The training jobs are configuration files and a wrapper, and checkpoint resume is verified by round-tripping a checkpoint to the Hub and comparing SHA-256. The one thing that is not portable is the free-tier accelerator quota, which is why the plan is chunked into resumable runs rather than long single sessions.</p></div></details>
+
+  <h3>The statistics examiner</h3>
+
+  <details><summary><span class="tag p">Stats</span>One seed. How do you know any difference is real?</summary>
+  <div class="dbody"><p>I do not, beyond the variance floor, and I say so. The rule is that no difference smaller than measured seed variance is reported as a finding, and with one seed per cell that floor comes from replicating a single cell and generalising, which is weaker than three seeds throughout. Three seeds everywhere is 368 GPU-hours against 136. If institutional GPU access arrives, seeds are the first thing it buys.</p></div></details>
+
+  <details><summary><span class="tag p">Stats</span>What is your test set and is it large enough?</summary>
+  <div class="dbody"><p>300 utterances per language, held out before any ladder rung is cut, with 100 more for development. For objective metrics that is ample. For the listening test the relevant number is raters times items, not corpus size, and the stimulus set is a subset chosen to include the contested-schwa cases.</p></div></details>
+
+  <details><summary><span class="tag p">Stats</span>How will you test significance?</summary>
+  <div class="dbody"><p>For objective metrics, paired comparisons over the same test utterances, since both systems see identical inputs, with the seed variance as the floor below which nothing is claimed. For listening test scores, a mixed-effects treatment with rater and item as random effects is the appropriate form, because raters differ systematically and items differ in difficulty.</p></div></details>
+
+  <details><summary><span class="tag p">Stats</span>Two or three speakers for the gold set is a very small panel.</summary>
+  <div class="dbody"><p>It is, and the design accounts for it. The sheet has a "varies" option, disagreement between speakers is detected at the slot level rather than being averaged away, and an item on which speakers disagree is reported as variable rather than resolved. The panel is validating a rule's predictions on 49 contested items, not estimating a population parameter.</p></div></details>
+
+  <h3>The supervisor and scope questions</h3>
+
+  <details><summary><span class="tag p">Scope</span>You changed the synopsis. Why should I accept that?</summary>
+  <div class="dbody"><p>One change, made for a design reason and approved. The Hindi-Sanskrit pairing confounded language, data quantity and corpus provenance at once, and Sanskrit data was gated behind a request with unknown turnaround, so half the study depended on someone else's decision. Marathi holds script, corpus collection and resource level fixed and differs in the rule, which is what a control has to do.</p></div></details>
+
+  <details><summary><span class="tag p">Scope</span>Nothing is trained yet. Are you behind?</summary>
+  <div class="dbody"><p>The sequencing is deliberate: everything established so far is a property of the corpus, the front end or the measuring apparatus, and each of those had to be right before any GPU time was spent. The apparatus has already caught three defects that would have corrupted results. What remains before training is the four model wrappers, and none of that needs a GPU.</p></div></details>
+
+  <details><summary><span class="tag p">Scope</span>What do you do if the result is null?</summary>
+  <div class="dbody"><p>Report it. A well-controlled null is a real contribution here, because it tells practitioners they can stop building and maintaining a front end for Hindi. The ladder makes the null more informative, not less, because it says at which data size the front end stops mattering.</p></div></details>
+
+  <details><summary><span class="tag p">Scope</span>What would DGX access change?</summary>
+  <div class="dbody"><p>First, three seeds per cell instead of one, which turns the variance floor from an assumption into a measurement. Then the full architecture matrix on the Marathi arm, and StyleTTS 2 back in the comparison. Wall-clock is the smaller gain; the statistical strength is the real one.</p></div></details>
+
+  <h3>The "so what" questions</h3>
+
+  <details><summary><span class="tag p">Impact</span>Who actually uses this result?</summary>
+  <div class="dbody"><p>Anyone building TTS for a Devanagari-script language with limited data, which is most of the Indic language space. The concrete question they face is whether to spend weeks building and maintaining a G2P front end. Today that decision is made by convention. This gives them a measured answer, split by architecture and by how much data they have.</p></div></details>
+
+  <details><summary><span class="tag p">Impact</span>What is released?</summary>
+  <div class="dbody"><p>The contested-schwa stress-test set with speaker-validated gold pronunciations, which does not currently exist; the configuration-reproducible testbed; and fine-tuned checkpoints for both languages. The stress-test set is the piece most likely to be reused by others, because it is the part that is hard to build and easy to share.</p></div></details>
+
+  <details><summary><span class="tag p">Impact</span>Does this generalise beyond Hindi and Marathi?</summary>
+  <div class="dbody"><p>The method does, and the specific finding does not without testing. The design is the contribution as much as the numbers: hold everything fixed, move only the input representation, add a same-script control that differs in the rule. That pattern transfers to any orthography with an implicit phonological process, and Devanagari has several beyond schwa deletion.</p></div></details>
+
+  </div>
+</section>
+
+
+<section id="s11">
+  <div class="sec-head"><span class="sec-num">Part 11</span><h2>Numbers to have cold</h2></div>
+  <p>If you are asked for a figure and you do not have it, say you will check rather than estimating. These are the ones worth memorising.</p>
+
+  <h3>Corpora</h3>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th></th><th class="num">Utterances</th><th class="num">Hours</th><th class="num">Speakers</th><th>Source rate</th><th class="num">Misaligned transcripts</th></tr>
+    <tr><td>Hindi, raw</td><td class="num">11,825</td><td class="num">26.23</td><td class="num">2</td><td>48 kHz</td><td class="num">0</td></tr>
+    <tr><td>Marathi, raw</td><td class="num">10,939</td><td class="num">22.37</td><td class="num">2</td><td>48 kHz</td><td class="num">0</td></tr>
+    <tr><td>Hindi, standardised</td><td class="num">5,485</td><td class="num">10.289</td><td class="num">1</td><td>22.05 / 16 kHz</td><td class="num">&mdash;</td></tr>
+    <tr><td>Marathi, standardised</td><td class="num">5,559</td><td class="num">9.884</td><td class="num">1</td><td>22.05 / 16 kHz</td><td class="num">&mdash;</td></tr>
+  </table>
+  </div>
+
+  <h3>Speaker pitch, the basis of the gender inference</h3>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th></th><th class="num">Speaker 0</th><th class="num">Speaker 1</th><th class="num">Separation</th></tr>
+    <tr><td>Hindi</td><td class="num">198.9 Hz</td><td class="num">108.8 Hz</td><td class="num">90.1 Hz</td></tr>
+    <tr><td>Marathi</td><td class="num">237.2 Hz</td><td class="num">125.7 Hz</td><td class="num">111.5 Hz</td></tr>
+  </table>
+  </div>
+  <p>Median over 25 sampled utterances per speaker. Speaker 1 is the male voice in both and is the one used.</p>
+
+  <h3>Splits</h3>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th></th><th class="num">Test</th><th class="num">Dev</th><th class="num">Train</th><th class="num">9 h</th><th class="num">5 h</th><th class="num">1 h</th><th class="num">30 min</th><th class="num">10 min</th></tr>
+    <tr><td>Hindi</td><td class="num">300</td><td class="num">100</td><td class="num">5,085</td><td class="num">4,793</td><td class="num">2,668</td><td class="num">541</td><td class="num">265</td><td class="num">86</td></tr>
+    <tr><td>Marathi</td><td class="num">300</td><td class="num">100</td><td class="num">5,159</td><td class="num">5,071</td><td class="num">2,810</td><td class="num">562</td><td class="num">279</td><td class="num">90</td></tr>
+  </table>
+  </div>
+  <p>Hindi train is 9.525 hours and test 0.579; Marathi train is 9.160 hours and test 0.542.</p>
+
+  <h3>The run plan</h3>
+  <div class="tblwrap">
+  <table class="data">
+    <tr><th>Runs</th><th>Architecture</th><th>Language</th><th>Input</th><th class="num">GPU-h</th></tr>
+    <tr><td>r01&ndash;r03</td><td>FastSpeech 2, VITS, Matcha</td><td>Hindi</td><td>phoneme</td><td class="num">36</td></tr>
+    <tr><td>r04&ndash;r05</td><td>FastSpeech 2, VITS</td><td>Hindi</td><td>grapheme, the ablation</td><td class="num">16</td></tr>
+    <tr><td>r06</td><td>HiFi-GAN</td><td>Hindi</td><td>ground-truth mel</td><td class="num">10</td></tr>
+    <tr><td>r07&ndash;r10</td><td>FastSpeech 2</td><td>Hindi</td><td>ladder, 5 h to 10 min</td><td class="num">20</td></tr>
+    <tr><td>r11&ndash;r14</td><td>VITS</td><td>Hindi</td><td>ladder, 5 h to 10 min</td><td class="num">20</td></tr>
+    <tr><td>r15&ndash;r16</td><td>FastSpeech 2, VITS</td><td>Marathi</td><td>phoneme, the control</td><td class="num">24</td></tr>
+    <tr><td>r17</td><td>HiFi-GAN</td><td>Marathi</td><td>ground-truth mel</td><td class="num">10</td></tr>
+    <tr><td><b>Total</b></td><td></td><td></td><td></td><td class="num"><b>136</b></td></tr>
+  </table>
+  </div>
+
+  <h3>Front end</h3>
+  <dl class="kv">
+    <dt>Inventory</dt><dd>75 declared symbols; Hindi uses 72, Marathi 67, and Marathi's is a strict subset</dd>
+    <dt>Coverage</dt><dd>Zero unknown symbols across 870,547 phone tokens in 11,044 transcripts</dd>
+    <dt>First pass</dt><dd>4.1 percent of Hindi phone tokens and 2.7 percent of Marathi had no mapping</dd>
+    <dt>Punctuation</dt><dd>16.5 percent of Hindi word tokens, 14.9 percent of Marathi</dd>
+    <dt>Silence trimming cost</dt><dd>5.5 percent in Hindi, 8.4 percent in Marathi</dd>
+    <dt>Tests</dt><dd>78 passing</dd>
+  </dl>
+</section>
+
+
+<section id="s12">
+  <div class="sec-head"><span class="sec-num">Part 12</span><h2>Glossary</h2></div>
+  <div class="grid2">
+    <div class="card">
+      <h4>Phonology and script</h4>
+      <dl class="kv">
+        <dt>Abugida</dt><dd>A writing system where consonants carry a default unwritten vowel</dd>
+        <dt>Schwa</dt><dd>The mid-central vowel <span class="ipa">ə</span>, Devanagari's inherent vowel</dd>
+        <dt>Matra</dt><dd>A dependent vowel sign replacing the inherent vowel</dd>
+        <dt>Virama</dt><dd>The mark that removes the inherent vowel, forming a cluster</dd>
+        <dt>Anusvara</dt><dd>A nasal taking the place of articulation of what follows</dd>
+        <dt>Nukta</dt><dd>A dot marking a borrowed consonant</dd>
+        <dt>Grapheme</dt><dd>A written character, as the model sees it without a front end</dd>
+        <dt>Phoneme</dt><dd>A contrastive sound unit, what the front end produces</dd>
+        <dt>G2P</dt><dd>Grapheme to phoneme conversion, the front end</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h4>Models and measurement</h4>
+      <dl class="kv">
+        <dt>Mel spectrogram</dt><dd>Time by frequency energy on a perceptual frequency scale</dd>
+        <dt>Vocoder</dt><dd>Converts a mel spectrogram back to a waveform</dd>
+        <dt>MAS</dt><dd>Monotonic alignment search, dynamic programming for text-to-frame alignment</dd>
+        <dt>MFA</dt><dd>Montreal Forced Aligner, an external forced alignment toolkit</dd>
+        <dt>MCD</dt><dd>Mel cepstral distortion, a spectral distance in decibels</dd>
+        <dt>DTW</dt><dd>Dynamic time warping, the alignment used before computing MCD</dd>
+        <dt>F0</dt><dd>Fundamental frequency, perceived as pitch</dd>
+        <dt>V/UV</dt><dd>Voiced versus unvoiced classification of a frame</dd>
+        <dt>MOS</dt><dd>Mean opinion score, the subjective quality rating</dd>
+        <dt>RTF</dt><dd>Real time factor, generation time over audio duration</dd>
+        <dt>LUFS</dt><dd>Loudness units relative to full scale, the ITU-R BS.1770 measure</dd>
+        <dt>MMS</dt><dd>Massively Multilingual Speech, the pretrained checkpoint family</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+
+<section id="s13">
+  <div class="sec-head"><span class="sec-num">Part 13</span><h2>What comes next</h2></div>
+  <p>If asked what remains, answer in this order. The first block needs no GPU, which is the point.</p>
+  <ol>
+    <li><b>Four training wrappers</b> for FastSpeech 2, VITS, Matcha-TTS and HiFi-GAN, each reading a run configuration and writing resumable checkpoints.</li>
+    <li><b>The remaining evaluation harness</b>: ASR word error rate with its ground-truth floor, predicted MOS through UTMOSv2 and NISQA, and real time factor.</li>
+    <li><b>Analysis code</b>: tables, plots and the statistical treatment, written before the numbers arrive so that the analysis is not chosen after seeing them.</li>
+    <li><b>Listening test infrastructure</b>, with 8 kHz low-passed stimuli and a ground-truth anchor.</li>
+    <li><b>Blocked on people</b>: elicitation sheets from two or three native Hindi speakers, which is what turns the 49-item set from self-consistent into validated.</li>
+    <li><b>Blocked on a round trip</b>: the Kaggle smoke test, which verifies that a GPU is attached, measures throughput, and proves a checkpoint survives push, delete and pull with matching SHA-256.</li>
+  </ol>
+  <div class="note ok">
+    <p class="note-k">The closing line</p>
+    <p>Whichever way the result goes it is useful. If the architectures absorb schwa deletion, nobody needs to build the front end again. If they do not, the field should stop defaulting to character input for Indic languages.</p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var SECTIONS = [
+    ["s0","Start here"],
+    ["s1","What TTS is"],
+    ["s2","Devanagari and the schwa"],
+    ["s3","The three architectures"],
+    ["s4","Alignment"],
+    ["s5","The metrics"],
+    ["s6","Experimental design"],
+    ["s7","Every decision"],
+    ["s8","Three defects"],
+    ["s9","Weaknesses to volunteer"],
+    ["s10","Question bank"],
+    ["s11","Numbers to have cold"],
+    ["s12","Glossary"],
+    ["s13","What comes next"]
+  ];
+
+  function buildNav(el, withNums){
+    if(!el) return [];
+    var made = [];
+    SECTIONS.forEach(function(s, i){
+      var a = document.createElement("a");
+      a.href = "#" + s[0];
+      a.dataset.target = s[0];
+      var n = document.createElement("span");
+      n.className = "n";
+      n.textContent = i === 0 ? "•" : String(i);
+      a.appendChild(n);
+      a.appendChild(document.createTextNode(s[1]));
+      el.appendChild(a);
+      made.push(a);
+    });
+    return made;
+  }
+
+  var railLinks = buildNav(document.getElementById("rail-links"), true);
+  buildNav(document.getElementById("topnav-links"), true);
+
+  // scroll spy
+  var byId = {};
+  railLinks.forEach(function(a){ byId[a.dataset.target] = a; });
+  var current = null;
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        if(current) current.classList.remove("on");
+        current = byId[e.target.id];
+        if(current) current.classList.add("on");
+      }
+    });
+  }, { rootMargin: "-10% 0px -72% 0px", threshold: 0 });
+  SECTIONS.forEach(function(s){
+    var el = document.getElementById(s[0]);
+    if(el) obs.observe(el);
+  });
+
+  // filter + expand/collapse for a details list
+  function wire(listId, inputId, openId, closeId, countId, noun){
+    var list = document.getElementById(listId);
+    if(!list) return;
+    var items = Array.prototype.slice.call(list.querySelectorAll("details"));
+    var heads = Array.prototype.slice.call(list.querySelectorAll("h3"));
+    var input = document.getElementById(inputId);
+    var count = document.getElementById(countId);
+
+    function report(n){
+      if(count) count.textContent = n + " of " + items.length + " " + noun;
+    }
+    report(items.length);
+
+    function filter(){
+      var q = (input.value || "").trim().toLowerCase();
+      var shown = 0;
+      items.forEach(function(d){
+        var hit = !q || d.textContent.toLowerCase().indexOf(q) !== -1;
+        d.hidden = !hit;
+        if(hit) shown++;
+      });
+      heads.forEach(function(h){
+        var any = false, el = h.nextElementSibling;
+        while(el && el.tagName.toLowerCase() === "details"){
+          if(!el.hidden){ any = true; break; }
+          el = el.nextElementSibling;
+        }
+        h.hidden = !any;
+      });
+      report(shown);
+    }
+
+    if(input) input.addEventListener("input", filter);
+    var o = document.getElementById(openId), c = document.getElementById(closeId);
+    if(o) o.addEventListener("click", function(){ items.forEach(function(d){ if(!d.hidden) d.open = true; }); });
+    if(c) c.addEventListener("click", function(){ items.forEach(function(d){ d.open = false; }); });
+  }
+
+  wire("dec-list", "q-dec", "dec-open", "dec-close", "dec-count", "decisions");
+  wire("qa-list", "q-qa", "qa-open", "qa-close", "qa-count", "questions");
+
+  // theme toggle, per viewer only
+  var btn = document.getElementById("theme");
+  function stored(){
+    try { return localStorage.getItem("sdh-theme"); } catch(e){ return null; }
+  }
+  var saved = stored();
+  if(saved === "dark" || saved === "light") document.documentElement.setAttribute("data-theme", saved);
+  if(btn) btn.addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme");
+    var isDark = cur === "dark" ||
+      (!cur && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var next = isDark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("sdh-theme", next); } catch(e){}
+  });
+})();
+</script>
