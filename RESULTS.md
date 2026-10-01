@@ -343,3 +343,75 @@ failed rather than just failing.
 
 One manual step: the notebook reads `HF_TOKEN` from Kaggle Secrets, and secrets
 are attached through the web UI, not the API. First push, attach, push again.
+
+## 2026-10-01 — front end scored against speaker judgement
+
+Commands:
+
+    python -m src.g2p.elicit merge stresstests/hindi_schwa_set.tsv \
+        "stresstests/filled/*.tsv"
+    python -m src.g2p.score stresstests/hindi_schwa_set_validated.tsv
+
+    front-end accuracy (validated subset)
+      39/47 = 83.0%
+
+      applies 17/18  94.4%      blocked 2/5  40.0%
+      cluster  3/4   75.0%      final   6/6 100.0%
+      loan     5/6   83.3%      mono    2/4  50.0%
+      nasal    4/4  100.0%
+
+This replaces the 49/49 self-consistency figure of 13 September. It is the
+first number in the project that was not produced by checking the author's rule
+against the author's own answer key. Two of the 49 words have no inherent schwa
+to elicit, so the denominator is 47.
+
+**One sheet, not three.** The responses of three speakers were averaged into a
+single sheet before I saw them, so the merge ran with one input and printed its
+warning about agreement. Three consequences, all of which weaken the claim and
+none of which can be repaired from the averaged file. Inter-speaker agreement
+cannot be computed. The variation rate is reported as zero, which is an
+artefact of the averaging rather than a finding, since no slot came through
+marked V. And any slot where the three genuinely split was silently resolved by
+whoever did the averaging. The per-speaker sheets are the thing to keep if this
+is ever rerun.
+
+**The errors point one way.** Seven of the eight mismatches are the speakers
+keeping a schwa that the rule deletes. Only one runs the other way. That is the
+signature of citation-form reading: a word read aloud on its own, slowly, keeps
+vowels that the same speaker drops in connected speech. The sheet asks for a
+normal conversational pace, but a list of 49 isolated words is close to the
+worst possible condition for getting one. So 83.0% is a lower bound under
+reading conditions that favour retention, not an estimate of the rule's
+accuracy in running speech.
+
+**Four of the eight are one phonological environment.** राष्ट्र, कृष्ण, धर्म and
+सत्य all keep a word-final schwa after a consonant cluster, and all four are
+Sanskrit-derived. Hindi is known to retain final schwa in exactly that
+environment. `SchwaConfig.block_before` exists for this and is deliberately
+empty, so the baseline rule is reported unmodified. Populating it from these
+four words would fit the model to the test set and the resulting figure would
+mean nothing. The fix needs a held-out set of tatsama words that this scoring
+run has never seen. With those four counted correct the accuracy would be
+43/47 = 91.5%, which is what the fix is worth if it generalises.
+
+**Two are ordinary citation-form retention.** आदमी came back as /aːd̪əmiː/ and
+फ़ैसला as /fɛːsəlaː/. Both delete in normal speech. कल came back as /kələ/,
+which is the same effect on a word short enough that it should not have
+happened.
+
+**One answer is impossible and should not be in the denominator.** न was
+answered N, which yields a gold form of /n/: a consonant with no vowel, not a
+pronounceable Hindi word. It is a filling error, not a judgement. Excluding it
+gives 39/46 = 84.8%. I have left it in the reported figure and flagged it here
+rather than quietly dropping the row, because dropping rows that disagree with
+the rule is how an accuracy figure stops being one.
+
+Tests: 71 passing. The 7 failures are `ModuleNotFoundError: librosa` in the
+device VM, which has no audio stack; the 65 non-audio tests pass there and the
+metric tests pass in the cloud container.
+
+**Status of this number.** Reportable as the front end's accuracy against
+elicited judgement, with the averaging and the citation-form bias stated. Not
+reportable as a measure of the rule in connected speech, and not comparable to
+published G2P accuracies, which are scored against dictionaries rather than
+speakers.
