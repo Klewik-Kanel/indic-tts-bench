@@ -88,7 +88,11 @@ fractions() {   # echoes "PAIR SOLO", computed from free memory right now
     printf "%.2f %.2f", p, s}'
 }
 
-launch_one() {   # run_id fraction -> echoes the pid
+# Sets LAST_PID rather than echoing it. A process started inside $( ) belongs
+# to that subshell, so the parent cannot `wait` on it: bash refuses with "not a
+# child of this shell" and the queue would run every pair at once.
+LAST_PID=""
+launch_one() {   # run_id fraction -> sets LAST_PID
   local r=$1 frac=$2 extra=()
   if [ "$(arch_of "$r")" = "hifigan" ]; then
     # The vocoder has no step budget: it is excluded from
@@ -101,7 +105,7 @@ launch_one() {   # run_id fraction -> echoes the pid
   TRAIN_GPU_FRACTION=$frac nohup "$PY" -m src.train.launch "$REPO/configs/$r.yaml" \
       --out "$RUNS/$r" --ckpt-every 5000 --log-every 100 "${extra[@]}" \
       > "$RUNS/$r.log" 2>&1 &
-  echo $!
+  LAST_PID=$!
 }
 
 offload() {
@@ -166,11 +170,14 @@ for pair in "${PAIRS[@]}"; do
   pids=()
   if [ ${#todo[@]} -eq 2 ]; then
     for r in "${todo[@]}"; do
-      p=$(launch_one "$r" "$PAIRFRAC"); pids+=("$p"); say "launched $r pid $p"
+      launch_one "$r" "$PAIRFRAC"
+      pids+=("$LAST_PID")
+      say "launched $r pid $LAST_PID at ${PAIRFRAC}"
     done
   else
-    p=$(launch_one "${todo[0]}" "$SOLOFRAC"); pids+=("$p")
-    say "launched ${todo[0]} alone pid $p at ${SOLOFRAC}"
+    launch_one "${todo[0]}" "$SOLOFRAC"
+    pids+=("$LAST_PID")
+    say "launched ${todo[0]} alone pid $LAST_PID at ${SOLOFRAC}"
   fi
 
   say "waiting for ${pids[*]}"
