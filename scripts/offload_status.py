@@ -145,14 +145,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"hub         could not be read: {why}")
     print()
 
-    done, wrong, missing = [], [], []
+    # A size difference has two very different causes and only one is a problem.
+    # train_log.jsonl and RESULTS.md are append-only: they grow while the run
+    # goes on, so the copy on the Hub is simply the file as it was at the last
+    # upload, and the next cycle sends the longer version. That is the system
+    # working. The real fault is a file whose size still matches what was
+    # uploaded while the Hub holds something different, which no future cycle
+    # will correct because nothing looks changed.
+    done, growing, stuck, missing = [], [], [], []
     for local, path in jobs:
-        size = local.stat().st_size
+        st = local.stat()
+        size = st.st_size
+        sig = f"{size}:{int(st.st_mtime)}"
         there = remote.get(path)
         if there is None:
             missing.append((path, size))
         elif there != size:
-            wrong.append((path, size, there))
+            (growing if state.get(path) != sig else stuck).append((path, size, there))
         else:
             done.append((path, size))
 
@@ -161,19 +170,28 @@ def main(argv: list[str] | None = None) -> int:
         print("-" * 72)
         for path, size in done:
             print(f"{'on hub':9} {human(size):>12}  {path}")
-        for path, size, there in wrong:
-            print(f"{'SIZE≠':9} {human(size):>12}  {path}  (hub has {human(there)})")
+        for path, size, there in growing:
+            print(f"{'grown':9} {human(size):>12}  {path}  "
+                  f"(hub has {human(there)}, from the last upload)")
+        for path, size, there in stuck:
+            print(f"{'STUCK':9} {human(size):>12}  {path}  (hub has {human(there)})")
     for path, size in missing:
         print(f"{'missing':9} {human(size):>12}  {path}"
               f"{'   [marked sent locally]' if path in state else ''}")
 
-    left = sum(s for _p, s in missing) + sum(s for _p, s, _t in wrong)
+    left = (sum(s for _p, s in missing)
+            + sum(s - t for _p, s, t in growing if s > t)
+            + sum(s for _p, s, _t in stuck))
     total = sum(s for _l, _p in jobs for s in [_l.stat().st_size])
     print()
     print(f"on the hub  {len(done)}/{len(jobs)} files, {human(total - left)} of {human(total)}")
-    if wrong:
-        print(f"size mismatch on {len(wrong)} file(s): re-uploaded next cycle only if "
-              "the local file changed, so delete them from the repo to force it")
+    if growing:
+        print(f"{len(growing)} append-only file(s) have grown since their last "
+              "upload. The next cycle sends the longer version; nothing to do.")
+    if stuck:
+        print(f"STUCK: {len(stuck)} file(s) match what was uploaded while the Hub "
+              "holds something else, so no future cycle will fix them. Delete "
+              f"their entries from {RUNS / '.offloaded.json'} to force a resend.")
     liars = [p for p, _s in missing if p in state]
     if liars:
         print(f"{len(liars)} file(s) are marked sent locally but are not on the Hub. "
@@ -194,7 +212,10 @@ def main(argv: list[str] | None = None) -> int:
             print("     of the traffic.")
     elif not left:
         print("everything planned is on the Hub")
-    return 0 if not (missing or wrong) else 1
+    # Growing files are not a failure: they are the normal state of a log
+    # during a run, and exiting non-zero for them would make this useless in a
+    # conditional.
+    return 0 if not (missing or stuck) else 1
 
 
 if __name__ == "__main__":
