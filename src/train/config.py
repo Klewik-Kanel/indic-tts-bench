@@ -68,7 +68,7 @@ COSMETIC = {"notes", "created", "run_id"}
 # init_from is part of config_hash: a hand edit makes the file disagree with the
 # matrix, which scripts/verify_queue.py reports as drift and is right to. Set
 # this, then run `python -m src.train.config --write` to regenerate.
-VOCODER_INIT = ""
+VOCODER_INIT = "/workspace/vocoders/hifigan_lj_generator.ckpt"
 
 
 @dataclass(frozen=True)

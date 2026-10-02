@@ -834,22 +834,29 @@ class HiFiGanAdapter(AdapterBase):
         return m
 
     def _warm_start(self, model, cfg: dict) -> None:
-        """Load what fits from a published checkpoint and say what did not.
+        """Load a published generator, renaming its tensors onto ours.
 
-        Partial and shape-matched on purpose. A published HiFi-GAN may name its
-        tensors differently from coqui's classes, and the honest way to find
-        out is to report how many matched rather than to assume. A warm start
-        that matched almost nothing is a cold start wearing a checkpoint's
-        name, and the printed counts are what tells the difference.
+        A straight `load_state_dict` matches nothing here, and the reason is not
+        the lineage but torch: `weight_norm` used to store `X.weight_g` and
+        `X.weight_v`, and since the move to `parametrizations` it stores
+        `X.parametrizations.weight.original0` and `.original1`. Every published
+        checkpoint predates that. Add speechbrain's extra `.conv` level and
+        coqui's `model_g.` prefix and three renames stand between the file and
+        the model. `vocoder_init.remap_generator_state` does them, deciding the
+        direction from this model's own keys rather than from a torch version.
 
-        [Unverified] Which published checkpoint warm-starts best here. A
-        jik876-lineage generator expects log(clamp(mel, 1e-5)), which is this
-        project's amplitude convention exactly, while coqui's own released
-        checkpoints expect their normalised dB scale, so the jik876 lineage
-        should start closer. That follows from the two conventions and has not
-        been measured.
+        Measured against speechbrain/tts-hifigan-ljspeech and coqui's generator
+        built from HifiganConfig: 234 of 234 tensors, no shape disagreements,
+        and the loaded generator turns 32 mel frames into 8,192 samples.
+
+        It refuses rather than proceeding when no generator tensor matched,
+        because that is a cold start wearing a checkpoint's name, and the step
+        count it would then need is not the one the schedule assumes.
         """
         import torch
+
+        from .vocoder_init import describe, remap_generator_state
+
         p = pathlib.Path(str(cfg["init_from"])).expanduser()
         if not p.exists():
             raise SystemExit(
@@ -863,24 +870,36 @@ class HiFiGanAdapter(AdapterBase):
             if isinstance(blob, dict) and isinstance(blob.get(key), dict):
                 blob = blob[key]
                 break
+        if not isinstance(blob, dict):
+            raise SystemExit(f"{p}: not a state dict this can read")
+
         own = model.state_dict()
-        took = {k: v for k, v in blob.items()
-                if k in own and hasattr(v, "shape") and own[k].shape == v.shape}
-        model.load_state_dict(took, strict=False)
-        g = sum(1 for k in took if k.startswith("model_g."))
-        d = sum(1 for k in took if k.startswith("model_d."))
-        print(f"{cfg.get('run_id')}: warm start from {p}: {len(took)} of "
-              f"{len(own)} tensors loaded ({g} generator, {d} discriminator). "
-              f"{len(own) - len(took)} left at their initial values.",
-              flush=True)
-        if g == 0:
+        renamed, report = remap_generator_state(blob, own.keys())
+
+        # Shapes, after the names agree. A tensor of the right name and the
+        # wrong size means a different architecture, not a different spelling.
+        wrong = [k for k, v in renamed.items()
+                 if hasattr(v, "shape") and tuple(v.shape) != tuple(own[k].shape)]
+        for k in wrong:
+            renamed.pop(k)
+        model.load_state_dict(renamed, strict=False)
+
+        print(f"{cfg.get('run_id')}: warm start from {p}")
+        print(describe(report), flush=True)
+        if wrong:
+            print(f"  {len(wrong)} tensor(s) matched by name but not by shape and "
+                  f"were skipped, e.g. {wrong[0]}", flush=True)
+        gen = sum(1 for k in renamed if k.startswith("model_g."))
+        if gen == 0:
             raise SystemExit(
-                f"{cfg.get('run_id')}: no generator tensor in {p} matched "
-                "coqui's HifiganGenerator by name and shape, so this is not a "
-                "warm start. Either the checkpoint names its tensors "
-                "differently and needs a mapping, or it is a different "
-                "architecture. Training from scratch is the honest "
-                "alternative and should be chosen deliberately.")
+                f"{cfg.get('run_id')}: no generator tensor in {p} could be "
+                "mapped onto this model, so this is not a warm start. Either "
+                "the checkpoint is a different architecture, or it names its "
+                "tensors in a way vocoder_init does not yet cover. Training "
+                "from scratch is the honest alternative and should be chosen "
+                "deliberately, not reached by accident.")
+        print(f"  {gen} generator tensor(s) loaded; the discriminator starts "
+              "fresh unless the checkpoint carried one", flush=True)
 
     def _split(self, model) -> tuple[list, list]:
         """Discriminator parameters, then the generator's.

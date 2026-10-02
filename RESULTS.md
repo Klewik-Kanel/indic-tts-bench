@@ -970,3 +970,62 @@ value cannot be written back out.
 r08's weights are unaffected. What was lost was the record of which config
 produced them, and that is recoverable because the config file itself was always
 correct.
+
+## 2026-10-02 — the vocoder warm start would have matched zero tensors
+
+Preparing r06 and r17 turned up two blockers. Neither is about the checkpoint
+being missing, which is what the symptom looked like.
+
+**First: r06 died before `init_from` was ever read.** `runner.train` builds
+`TextEncoder.for_config(language, input_repr)` unconditionally, `config.py`
+enforces `input_repr: none` for `hifigan`, and there is no vocabulary for
+`"none"`, so the encoder raises `ValueError`. Adapters now declare `needs_text`;
+the loop builds an encoder only when one is wanted and writes no `vocab.json`
+for a run that has no vocabulary. `bundle.py` stopped copying `vocab.json`
+unconditionally, which would have taken a vocoder export down later.
+
+**Second, and the real find: a straight `load_state_dict` matches nothing**, and
+the reason is torch rather than the checkpoint. `weight_norm` used to store a
+tensor as `X.weight_g` and `X.weight_v`; since the move to `parametrizations` it
+stores `X.parametrizations.weight.original0` and `.original1`. Every published
+checkpoint predates that, and a modern torch builds the new names:
+
+    coqui HifiganGenerator, torch 2.14   conv_pre.parametrizations.weight.original0
+    speechbrain LJSpeech checkpoint      conv_pre.conv.weight_g
+    jik876 lineage                       conv_pre.weight_g
+
+Same 234 tensors, same shapes, three differences in spelling: the weight-norm
+API, speechbrain's extra `.conv` level, and coqui's `model_g.` prefix.
+`src/train/vocoder_init.py` does those renames, deciding the direction from the
+target model's own keys rather than from a torch version, so it works on
+whichever torch the DGX has.
+
+**Verified rather than argued**, by building coqui's generator from
+`HifiganConfig`'s own `generator_model_params` and loading the real
+speechbrain/tts-hifigan-ljspeech checkpoint through the shipped module:
+
+    mapped                     234 of 235 target tensors
+    the one miss               the discriminator, which a generator-only file has none of
+    shape disagreements        0
+    load_state_dict(strict)    accepted
+    weights changed            yes
+    synthesis                  (1, 80, 32) -> (1, 1, 8192), finite, within [-1, 1]
+    samples per mel frame      256, which is the hop
+
+The architecture matches without adjustment: speechbrain's `hyperparams.yaml`
+declares upsample factors [8, 8, 2, 2], kernels [16, 16, 4, 4], 512 initial
+channels, resblock type 1 with kernels [3, 7, 11], which is exactly
+`HifiganConfig`'s default generator.
+
+**[Unverified]** What mel convention those weights expect. speechbrain's
+published `hyperparams.yaml` states only the architecture, not the analysis, so
+the claim that its amplitude convention is closer to ours than coqui's is not
+something this file can support. It matters less than it would elsewhere,
+because the whole point of fine-tuning is that the vocoder is refitted to our
+mels, and the stopping criterion measures when that has happened rather than
+assuming a step count.
+
+`VOCODER_INIT` in `config.py` now names the checkpoint and the configs were
+regenerated, so r06 is `3120211db4c7` and r17 is `99a3999ca13e`. Setting it there
+rather than editing the YAML keeps `config_hash` honest, which is what
+`verify_queue.py` checks.
