@@ -1075,3 +1075,44 @@ pair 7 the card is free and the fraction will be 0.45, which is 17.73 GiB
 against the 6.34 this used.
 
 r06 and r17 now need nothing. `verify_queue.py` reports no blockers.
+
+## 2026-10-02 — gradient clipping is active on nearly every step, in every run
+
+Checked because r02 and r05 logged pre-clip norms of 188 and 643 against
+`grad_clip: 1.0`, and the worry was that a budget field held identical across
+architectures was doing something very different to each of them, the way
+`batch_frames` does.
+
+It is not that. `clip_grad_norm_` reports the norm before clipping, and the
+medians over every logged step are:
+
+    run  arch         arm           median        max     clipped by, at the median
+    r01  fastspeech2  phoneme 9h    368.44     184,919    368x
+    r04  fastspeech2  grapheme 9h   106.86     110,145    107x
+    r07  fastspeech2  phoneme 5h    210.68     493,259    211x
+    r08  fastspeech2  phoneme 1h    122.13     149,720    122x
+    r02  vits         phoneme 9h   1138.87       4,103    1139x
+    r05  vits         grapheme 9h    97.31       1,815     97x
+
+FastSpeech 2 medians run 107 to 368 and VITS 97 to 1139. The ranges overlap, so
+this is not an architecture asymmetry: every run is clipped hard on essentially
+every step. The within-pair spread is 3.4x for the FastSpeech 2 arms and 11.7x
+for the VITS arms, which is a property of the vocabularies and sequence lengths
+the arms differ in rather than of the budget.
+
+**[Inference] Why this matters less than the ratios suggest.** The optimiser is
+AdamW, which divides by the square root of the second-moment estimate. Scaling
+every gradient by one constant scales the first moment by that constant and the
+second by its square, so the update is largely unchanged. The cancellation is
+not exact, because the factor varies from step to step while the moments are
+running averages, and because of epsilon. That argument is from how Adam is
+defined, not from an experiment here, and no ablation on this corpus supports it.
+
+**And the clip is earning its place.** The largest single norm recorded is
+493,259, on r07. An unclipped step of that size would destroy a run, and spikes
+of 10^5 appear in all four FastSpeech 2 logs.
+
+No change. It applies identically to both arms of every comparison, so no
+contrast is affected, and changing it now would break comparability with the
+ladder runs still to come. Recorded because a reader finding 1139x in a log
+later deserves to know it was looked at.
