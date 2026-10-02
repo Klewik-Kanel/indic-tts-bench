@@ -254,6 +254,19 @@ VITS_DEVIATIONS = (
     "native sample rate is 16 kHz, inherited from the MMS checkpoint, so its "
     "output carries no energy above 8 kHz",
 )
+# Architectures excluded from the matrix for compute, with the reason each is
+# excluded. The paper's future-work section is generated from this rather than
+# written separately, so the two cannot disagree.
+FUTURE_WORK = {
+    "matcha": ("Matcha-TTS: adapter written and tested, moved out of the matrix "
+               "on 2 October. Needs the matcha-tts package, a corpus "
+               "mel-statistics pass and a full 100,000 steps from scratch, "
+               "since its published weights were fitted to a different mel "
+               "band. configs/r03.yaml and the adapter are kept."),
+    "styletts2": ("StyleTTS 2: excluded from the start on compute."),
+}
+
+
 MATCHA_DEVIATIONS = (
     "flow-matching decoder has a sampling-steps hyperparameter at inference "
     "that the others do not; fixed at 10 for every evaluation",
@@ -275,9 +288,27 @@ def plan_runs() -> list[RunConfig]:
                           input_repr="phoneme", data="9h", vocoder="hifigan_hindi",
                           notes="durations learned internally; see ALIGNER_NOTE"))
     runs.append(vits("r02", "hindi", "phoneme", "9h"))
-    runs.append(RunConfig(run_id="r03", architecture="matcha", language="hindi",
-                          input_repr="phoneme", data="9h", vocoder="hifigan_hindi",
-                          init_from="matcha_ljspeech", deviations=MATCHA_DEVIATIONS))
+    # r03, Matcha-TTS, is future work as of 2 October. Commented out rather
+    # than deleted, and the adapter in src/train/adapters.py is kept whole, so
+    # this is a scope decision that can be reversed by uncommenting three lines
+    # rather than rewritten later from nothing.
+    #
+    # Why it moved: Matcha needs the matcha-tts package installed beside
+    # coqui-tts, a corpus mel-statistics pass, and 100,000 steps of its own on
+    # a card that is shared and finite. Its published LJSpeech weights are also
+    # unusable here, because they were fitted to a mel bank reaching 8 kHz
+    # while this project builds to sr/2, so r03 would have trained from scratch
+    # and paid full price. The dissertation's question is phonemic versus
+    # graphemic input, and FastSpeech 2 and VITS already answer it twice, in
+    # two languages, across the whole ladder. A third architecture strengthens
+    # the generalisation; it does not carry the claim.
+    #
+    # It joins StyleTTS 2 in future work, excluded for the same reason: compute.
+    # configs/r03.yaml is left on disk for when it returns.
+    #
+    # runs.append(RunConfig(run_id="r03", architecture="matcha", language="hindi",
+    #                       input_repr="phoneme", data="9h", vocoder="hifigan_hindi",
+    #                       init_from="matcha_ljspeech", deviations=MATCHA_DEVIATIONS))
 
     # Hindi ablation: the same two architectures on raw graphemes
     runs.append(RunConfig(run_id="r04", architecture="fastspeech2", language="hindi",

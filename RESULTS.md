@@ -863,3 +863,70 @@ r06 and r17 existed separately because the speaker differs, and using a
 Hindi-fitted vocoder on Marathi audio would put a speaker mismatch inside the
 control that exists to isolate language. Two seems right for that reason, and it
 is the difference between 19.6 h and roughly half of it.
+
+## 2026-10-02 — Matcha to future work, and the rest of the matrix queued
+
+**Matcha-TTS (r03) leaves the matrix.** Commented out in `plan_runs` rather than
+deleted, with the adapter, its 18 tests and `configs/r03.yaml` all kept, so this
+is reversible by uncommenting three lines. It joins StyleTTS 2 in a named
+`FUTURE_WORK` dict in `config.py`, so the paper's future-work section is
+generated from the repository rather than remembered.
+
+Matrix after the change: 18 runs, 8 FastSpeech 2, 8 VITS, 2 vocoders, and
+`assert_budget_matched` still passes. The planning estimate drops from 152 to
+140 GPU-h, which both arithmetic routes agree on.
+
+The reason is compute, stated plainly: Matcha needs its package installed beside
+coqui-tts, a corpus mel-statistics pass, and 100,000 steps from scratch, because
+its published LJSpeech weights were fitted to a mel bank reaching 8 kHz while
+this project builds to sr/2. The dissertation's question is phonemic versus
+graphemic input, and two architectures answer it twice, in two languages, across
+the whole ladder. A third strengthens the generalisation; it does not carry the
+claim.
+
+**The remaining 14 runs are queued as 7 pairs**, in `scripts/queue_all.sh`, in
+priority order rather than by run number:
+
+    r02 r05    Hindi VITS, the phonemic-versus-graphemic ablation
+    r15 r18    Marathi FastSpeech 2, both control arms
+    r16 r19    Marathi VITS, both control arms
+    r11 r12    VITS ladder, 5 h and 1 h
+    r13 r14    VITS ladder, 30 min and 10 min
+    r09 r10    FastSpeech 2 ladder, 30 min and 10 min
+    r06 r17    the two vocoders, fine-tuned on our own mels
+
+The ladder is last among the acoustic runs on purpose. It is the shock absorber
+in plan v3, so if the card is withdrawn mid-queue what is lost is the weakest
+claim rather than the central one.
+
+Four properties that matter for something left running for days. It is
+idempotent: a run with `step_100000`, or a vocoder with `stopped.json`, is
+skipped, so re-running it after any interruption resumes rather than restarts.
+A failing pair is logged and the queue moves on, because one broken config must
+not cost the remaining runs. Between pairs it waits for our own runs to exit
+rather than for the card to empty, since a foreign tenant may never leave. And
+it waits a bounded hour for a tenant to go, then proceeds with a memory fraction
+computed from whatever is actually free: waiting indefinitely for someone else's
+job is how a queue silently does nothing.
+
+It cannot stop another tenant arriving. Nothing available here can. What it does
+is keep our share occupied continuously, which is the only lever we have.
+
+**Weights are copied off the machine on a timer**, since the GPU access is
+temporary and a 95%-full Lustre mount is not a backup. `scripts/offload.py`
+uploads to a Hugging Face model repository, using the token installed in phase 1
+and closing plan v3's phase 3 task t5.
+
+Every small file goes every time: run config, vocabulary, training log, stopping
+record, the run matrix and this file. A checkpoint without those is a blob of
+numbers. Then one checkpoint per run, the final one if it exists and otherwise
+the most recent, because a 5,000-step cadence across 18 runs would upload the
+same architecture dozens of times to no purpose, and the point is to survive
+losing the machine rather than to keep a complete history. Export bundles are
+included once they exist, since the front end consumes those rather than raw
+checkpoints. A local state file of sizes and modification times means a
+twenty-minute cadence costs almost nothing after the first pass, and an upload
+is recorded as done only after it returns, so a failure is retried next cycle.
+
+Verified against a synthetic run tree: newest checkpoint for an in-flight run,
+final for a finished one, and a half-written `.tmp_step_*` save ignored.
