@@ -15,7 +15,9 @@ config and in the deviations table, not in Python nobody reads.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import math
 import pathlib
 
 from . import batching
@@ -705,11 +707,275 @@ class MatchaAdapter(AdapterBase):
         return sum(losses.values())
 
 
+# --- hifigan ---------------------------------------------------------------
+
+# coqui's HifiganConfig documents seq_len 8192 samples of audio per training
+# item, which at hop 256 is exactly 32 mel frames. A vocoder trains on fixed
+# segments rather than whole utterances: padding a batch to the longest item
+# and training on the padding teaches the generator to produce the padding.
+HIFIGAN_SEGMENT_SAMPLES = 8_192
+
+# log(1e-5), the floor features.compute clamps the mel to, which is what the
+# mel of digital silence comes out as. A short utterance is padded with this
+# rather than with 0.0, which would be a loud frame.
+MEL_FLOOR = math.log(1e-5)
+
+
+class HiFiGanAdapter(AdapterBase):
+    """HiFi-GAN, fine-tuned on this project's own ground-truth mels.
+
+    Reinstated on 2 October after the mel survey: no published vocoder shares
+    this project's mel analysis, and the three axes it differs on (band,
+    amplitude convention, STFT framing) all disappear if the vocoder is fitted
+    to our mels instead of our mels being refitted to a vocoder. That also
+    keeps every trained acoustic parameter, which is the constraint that
+    decided it, and removes the "vocoder not matched to the corpus" deviation
+    rather than adding one.
+
+    **The mel handed to the generator is ours, unnormalised.** Not coqui's
+    AudioProcessor scale. That is the entire point: the generator learns the
+    representation our acoustic models actually emit. A warm start from weights
+    fitted to a different scale is what the fine-tuning is for.
+
+    Two details read out of coqui's source rather than assumed, each of which
+    would be silent if taken on trust:
+
+    **`GAN.get_optimizer`'s docstring is wrong.** It says "First one is for the
+    generator and the second one is for the discriminator", and the code
+    returns `[optimizer2, optimizer1]`, which is discriminator first. The code
+    is what `train_step` indexes: `optimizer_idx == 0` takes the discriminator
+    branch and caches `y_hat_g` for the generator branch at index 1. So the
+    order here is discriminator then generator, as it is for VITS, and it comes
+    from reading `train_step`, not the docstring.
+
+    **`GAN.train_disc` defaults to False** and is set by coqui's own trainer
+    from `trainer.total_steps_done >= config.steps_to_start_discriminator`. We
+    do not use that trainer, so left alone it stays False for the whole run,
+    the discriminator never trains, and a GAN quietly becomes a generator with
+    a reconstruction loss. It is set explicitly in `build`.
+    """
+
+    name = "hifigan"
+    n_optimizers = 2
+    needs = ("mel", "wav")
+    # The crop offset is derived from (seed, step, utterance id): see the note
+    # in runner._collated for why this is not drawn from a global RNG.
+    wants_step = True
+
+    def segment_frames(self, cfg: dict) -> int:
+        from . import features as F
+        return int(HIFIGAN_SEGMENT_SAMPLES // int(F.HOP))
+
+    def build(self, vocab_size: int, cfg: dict):
+        from TTS.vocoder.configs.hifigan_config import HifiganConfig
+        from TTS.vocoder.models.gan import GAN
+        from . import features as F
+
+        mel = F.mel_params(int(cfg["sample_rate"]))
+        c = HifiganConfig()
+        c.audio.sample_rate = mel["sample_rate"]
+        c.audio.hop_length = mel["hop_length"]
+        c.audio.fft_size = mel["n_fft"]
+        c.audio.win_length = mel["win_length"]
+        c.audio.num_mels = mel["n_mels"]
+        c.audio.mel_fmin = mel["fmin"]
+        # None is coqui's way of saying sr/2, which is this project's band. It
+        # is written as None rather than as 11025.0 so the two agree even if
+        # the sample rate ever changes.
+        c.audio.mel_fmax = None
+        # The L1 spectrogram term in GeneratorLoss computes its own mel, and at
+        # its defaults that mel is already this project's: fmin 0.0 and
+        # mel_fmax None, which librosa reads as sr/2. Set explicitly anyway,
+        # because a silent disagreement here would train the generator against
+        # a different analysis than the one it is being fitted to.
+        c.l1_spec_loss_params = dict(c.l1_spec_loss_params)
+        c.l1_spec_loss_params.update({
+            "use_mel": True, "sample_rate": mel["sample_rate"],
+            "n_fft": mel["n_fft"], "hop_length": mel["hop_length"],
+            "win_length": mel["win_length"], "n_mels": mel["n_mels"],
+            "mel_fmin": mel["fmin"], "mel_fmax": None,
+        })
+        # The budget owns both learning rates, as it does for VITS: coqui's own
+        # lr_gen and lr_disc would give this run a rate no other run used.
+        c.lr_gen = float(cfg["lr"])
+        c.lr_disc = float(cfg["lr"])
+        c.steps_to_start_discriminator = 0
+
+        m = GAN.init_from_config(c)
+
+        # The generator's upsampling has to reconstruct exactly one hop per mel
+        # frame. If the factors stop multiplying to the hop, the waveform comes
+        # out a different length than the mel implies and train_step's
+        # y_hat[:, :, :y.size(2)] truncation hides it.
+        ups = list(c.generator_model_params["upsample_factors"])
+        prod = 1
+        for u in ups:
+            prod *= int(u)
+        if prod != int(mel["hop_length"]):
+            raise SystemExit(
+                f"{cfg.get('run_id')}: the generator's upsample factors {ups} "
+                f"multiply to {prod} and the hop length is {mel['hop_length']}. "
+                "One sample of waveform per hop is what makes the mel frames "
+                "and the waveform line up.")
+
+        # See the class docstring: left at its default this is False for the
+        # whole run and the discriminator never trains.
+        m.train_disc = True
+        self._criterion = m.get_criterion()   # [DiscriminatorLoss, GeneratorLoss]
+
+        if cfg.get("init_from"):
+            self._warm_start(m, cfg)
+        return m
+
+    def _warm_start(self, model, cfg: dict) -> None:
+        """Load what fits from a published checkpoint and say what did not.
+
+        Partial and shape-matched on purpose. A published HiFi-GAN may name its
+        tensors differently from coqui's classes, and the honest way to find
+        out is to report how many matched rather than to assume. A warm start
+        that matched almost nothing is a cold start wearing a checkpoint's
+        name, and the printed counts are what tells the difference.
+
+        [Unverified] Which published checkpoint warm-starts best here. A
+        jik876-lineage generator expects log(clamp(mel, 1e-5)), which is this
+        project's amplitude convention exactly, while coqui's own released
+        checkpoints expect their normalised dB scale, so the jik876 lineage
+        should start closer. That follows from the two conventions and has not
+        been measured.
+        """
+        import torch
+        p = pathlib.Path(str(cfg["init_from"])).expanduser()
+        if not p.exists():
+            raise SystemExit(
+                f"{cfg.get('run_id')}: init_from is {cfg['init_from']!r}, which "
+                "is not a checkpoint on this machine. Point it at the "
+                "downloaded vocoder, or set it empty to train from scratch, "
+                "which costs the warm start and belongs in the deviations "
+                "table.")
+        blob = torch.load(p, map_location="cpu", weights_only=False)
+        for key in ("model", "state_dict", "generator"):
+            if isinstance(blob, dict) and isinstance(blob.get(key), dict):
+                blob = blob[key]
+                break
+        own = model.state_dict()
+        took = {k: v for k, v in blob.items()
+                if k in own and hasattr(v, "shape") and own[k].shape == v.shape}
+        model.load_state_dict(took, strict=False)
+        g = sum(1 for k in took if k.startswith("model_g."))
+        d = sum(1 for k in took if k.startswith("model_d."))
+        print(f"{cfg.get('run_id')}: warm start from {p}: {len(took)} of "
+              f"{len(own)} tensors loaded ({g} generator, {d} discriminator). "
+              f"{len(own) - len(took)} left at their initial values.",
+              flush=True)
+        if g == 0:
+            raise SystemExit(
+                f"{cfg.get('run_id')}: no generator tensor in {p} matched "
+                "coqui's HifiganGenerator by name and shape, so this is not a "
+                "warm start. Either the checkpoint names its tensors "
+                "differently and needs a mapping, or it is a different "
+                "architecture. Training from scratch is the honest "
+                "alternative and should be chosen deliberately.")
+
+    def _split(self, model) -> tuple[list, list]:
+        """Discriminator parameters, then the generator's.
+
+        By the `model_d.` prefix, which is how GAN.__init__ names the two
+        submodules: model_g and model_d.
+        """
+        disc, gen = [], []
+        for name, p in model.named_parameters():
+            (disc if name.startswith("model_d.") else gen).append(p)
+        if not disc:
+            raise SystemExit(
+                "hifigan: no parameters under 'model_d.'; upstream renamed the "
+                "discriminator and the two-optimiser split is now wrong")
+        return disc, gen
+
+    def optimizers(self, model, cfg: dict) -> list:
+        disc, gen = self._split(model)
+        # Discriminator first. train_step's optimizer_idx == 0 is the
+        # discriminator branch and it caches outputs the idx-1 generator branch
+        # reuses, so the order is load-bearing. coqui's get_optimizer docstring
+        # says the opposite of what its code returns; the code is right.
+        return [adamw(disc, cfg), adamw(gen, cfg)]
+
+    def param_groups(self, model) -> list:
+        disc, gen = self._split(model)
+        return [disc, gen]
+
+    def crop_offset(self, cfg: dict, step: int, uid: str, limit: int) -> int:
+        """Where this utterance is cropped at this step, reproducibly.
+
+        Derived from (seed, step, utterance id) by hashing, not drawn from an
+        RNG: collate runs on the prefetch thread, ahead of the training loop,
+        so a global draw would land in a checkpoint at the wrong position and
+        the bit-exact resume guarantee would stop holding without any symptom.
+        Hashing gives a different crop every step, the same crop on a resumed
+        run, and no RNG state to keep in step with anything.
+        """
+        if limit <= 0:
+            return 0
+        h = hashlib.blake2b(f"{int(cfg['seed'])}:{int(step)}:{uid}".encode("utf-8"),
+                            digest_size=8).digest()
+        return int.from_bytes(h, "big") % (limit + 1)
+
+    def collate(self, batch, enc, cfg, step: int = 0) -> dict:
+        """One fixed-length segment per utterance: mel and the matching audio.
+
+        No text. `config.py` enforces input_repr == "none" for this
+        architecture, so the text encoder is not involved and the vocoder sees
+        the same audio whichever arm it will later be used to synthesise. That
+        is what lets one vocoder serve both arms of a comparison.
+        """
+        import numpy as np
+        import torch
+        from . import features as F
+
+        hop = int(F.HOP)
+        seg = self.segment_frames(cfg)
+        feats = self._features(batch, cfg)
+        mels, waves = [], []
+        for u, f in zip(batch, feats):
+            mel = np.asarray(f["mel"], dtype="float32")        # (frames, mels)
+            wav = np.asarray(f["wav"], dtype="float32").reshape(-1)
+            # Frames whose full hop of audio actually exists. librosa's
+            # centred STFT reports a frame for the final partial hop, and
+            # cropping up to it would ask for samples past the end.
+            usable = min(mel.shape[0], wav.size // hop)
+            if usable >= seg:
+                off = self.crop_offset(cfg, step, u.uid, usable - seg)
+                mel_c = mel[off:off + seg]
+                wav_c = wav[off * hop:(off + seg) * hop]
+            else:
+                # Shorter than one segment: pad the audio with silence and the
+                # mel with the floor silence actually produces.
+                mel_c = np.full((seg, mel.shape[1]), MEL_FLOOR, dtype="float32")
+                mel_c[:mel.shape[0]] = mel
+                wav_c = np.zeros(seg * hop, dtype="float32")
+                wav_c[:wav.size] = wav[:seg * hop]
+            mels.append(mel_c)
+            waves.append(wav_c)
+
+        return {
+            # [B, n_mels, frames]: the generator is a conv1d stack over mel
+            # channels, so channels-first, as VITS's spectrogram is.
+            "input": torch.from_numpy(np.stack(mels)).transpose(1, 2).contiguous(),
+            # [B, 1, samples], which is what train_step's y.size(2) indexes.
+            "waveform": torch.from_numpy(np.stack(waves)).unsqueeze(1),
+        }
+
+    def loss(self, model, t: dict, optimizer_idx: int = 0):
+        """Discriminator loss at index 0, generator loss at index 1."""
+        _outputs, loss_dict = model.train_step(t, self._criterion, optimizer_idx)
+        return loss_dict["loss"]
+
+
 ADAPTERS = {
     "toy": ToyAdapter,
     "fastspeech2": FastSpeech2Adapter,
     "vits": VitsAdapter,
     "matcha": MatchaAdapter,
+    "hifigan": HiFiGanAdapter,
 }
 
 

@@ -258,10 +258,21 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
     loss_val = float("nan")
     step = start
 
+    # An adapter that crops a random segment needs the step number, so the crop
+    # is derived from (seed, step) like the batch itself rather than from a
+    # global RNG. Collate runs on the prefetch thread, which is ahead of the
+    # main loop, so a draw from the global RNG there would be captured in a
+    # checkpoint at a different position than the step it belongs to and the
+    # bit-exact resume guarantee would quietly stop holding. Declared by the
+    # adapter rather than passed to all of them, so the other three keep the
+    # signature their tests were written against.
+    wants_step = bool(getattr(adapter, "wants_step", False))
+
     def _collated():
         for s, b in batching.batch_stream(
                 utts, int(cfg["batch_frames"]), int(cfg["seed"]), steps_total, start):
-            yield s, b, adapter.collate(b, enc, cfg)
+            yield s, b, (adapter.collate(b, enc, cfg, step=s) if wants_step
+                         else adapter.collate(b, enc, cfg))
 
     for step, batch, cpu_tensors in _prefetch(_collated()):
         n = step + 1                                   # schedule steps are 1-based
