@@ -167,6 +167,30 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
     # TRAIN_GPU_FRACTION caps what one process may reserve, so several runs fit.
     # It is a scheduling knob and not part of the budget: it changes what else
     # can run beside this one, never what this one computes.
+    # Threads. torch sizes its intra-op pool at one thread per core, per
+    # process, and does not know another run is doing the same thing. On a
+    # 256-core host two runs ask for 512 threads, the host load goes above the
+    # core count, and the work that suffers is exactly the work the GPU is
+    # waiting on: collating a batch, which is CPU and disk. Measured on this
+    # box with no other tenant on the card: load average 309 on 256 cores and
+    # GPU utilisation wandering between 75% and 95%.
+    #
+    # TRAIN_THREADS caps it. Like TRAIN_GPU_FRACTION this is a scheduling knob
+    # and not part of the budget: it changes how this run shares a host, never
+    # what it computes. The default leaves torch alone, so nothing changes for
+    # a run that does not set it.
+    threads = os.environ.get("TRAIN_THREADS")
+    if threads:
+        torch.set_num_threads(int(threads))
+        # Interop is the pool that runs separate graph branches; one is enough
+        # when the per-op pool is already capped.
+        try:
+            torch.set_num_interop_threads(max(1, int(threads) // 4))
+        except RuntimeError:
+            pass          # already initialised, which is not worth failing over
+        print(f"{run_id}: capped at {int(threads)} intra-op threads "
+              f"(host has {os.cpu_count()} cores)", flush=True)
+
     frac = os.environ.get("TRAIN_GPU_FRACTION")
     if frac and dev.type == "cuda":
         torch.cuda.set_per_process_memory_fraction(float(frac))

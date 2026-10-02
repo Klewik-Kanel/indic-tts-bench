@@ -102,7 +102,9 @@ launch_one() {   # run_id fraction -> sets LAST_PID
     # config_hash.
     extra=(--eval-every 2000 --patience 3 --min-delta 1e-4)
   fi
-  TRAIN_GPU_FRACTION=$frac nohup "$PY" -m src.train.launch "$REPO/configs/$r.yaml" \
+  TRAIN_GPU_FRACTION=$frac TRAIN_THREADS=${TRAIN_THREADS:-16} \
+    OMP_NUM_THREADS=${TRAIN_THREADS:-16} MKL_NUM_THREADS=${TRAIN_THREADS:-16} \
+    nohup "$PY" -m src.train.launch "$REPO/configs/$r.yaml" \
       --out "$RUNS/$r" --ckpt-every 5000 --log-every 100 "${extra[@]}" \
       > "$RUNS/$r.log" 2>&1 &
   LAST_PID=$!
@@ -136,6 +138,16 @@ for pair in "${PAIRS[@]}"; do
   say "=== next pair: ${todo[*]}"
   wait_for_our_runs || exit 1
   wait_for_tenant
+
+  # Re-check after waiting. What we waited for may have been these very runs,
+  # launched by hand: deciding before the wait and acting after it would relaunch
+  # a run that finished while we waited.
+  still=()
+  for r in "${todo[@]}"; do
+    if finished "$r"; then say "$r finished while we waited, skipping"; else still+=("$r"); fi
+  done
+  todo=("${still[@]}")
+  [ ${#todo[@]} -eq 0 ] && { say "pair $A $B is done, next"; continue; }
   git -C "$REPO" pull --ff-only 2>&1 | tail -2
 
   # The vocoders need a checkpoint to warm-start from, or they would train from
