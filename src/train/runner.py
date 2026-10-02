@@ -29,6 +29,7 @@ from typing import Protocol
 from . import batching, schedule
 from .progress import Progress
 from .checkpoint import CheckpointDir, RetentionPolicy
+from .earlystop import Plateau
 from .text import TextEncoder, Vocab
 
 HERE = pathlib.Path(__file__).resolve().parents[2]
@@ -123,7 +124,9 @@ def _device(prefer: str = "auto"):
 def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = None,
           max_steps: int | None = None, log_every: int = 50,
           ckpt_every: int = 5_000, device: str = "auto",
-          manifest: pathlib.Path | None = None) -> LoopResult:
+          manifest: pathlib.Path | None = None,
+          eval_every: int = 0, patience: int = 3,
+          min_delta: float = 0.0) -> LoopResult:
     """Run, or resume, one training run.
 
     `max_steps` overrides the config only for dry runs. A real run takes its
@@ -253,6 +256,33 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
     scaler = torch.amp.GradScaler("cuda", enabled=(prec == "fp16" and on_cuda))
 
     log_path = out_dir / "train_log.jsonl"
+
+    def save_checkpoint(at: int) -> None:
+        ck.save(at, lambda dst: torch.save(
+            {"model": model.state_dict(),
+             # A list, always, even for one optimiser: a checkpoint whose shape
+             # depends on the architecture is a second thing that can disagree
+             # with the config.
+             "optimizers": [o.state_dict() for o in opts],
+             # Captured at save time, so a resume continues the same random
+             # sequence rather than starting a new one.
+             "rng": {"cpu": torch.get_rng_state(),
+                     "cuda": (torch.cuda.get_rng_state_all()
+                              if dev.type == "cuda" else [])}},
+            dst / "state.pt"),
+            {"run_id": run_id, "config_hash": cfg.get("config_hash", ""),
+             "architecture": cfg["architecture"], "loss": loss_val})
+        ck.prune()
+
+    # The stopping criterion, off unless a caller asks for it and the adapter
+    # offers a validation pass. Only the vocoder uses it: every acoustic run
+    # trains for exactly max_steps because the fixed-budget claim depends on
+    # it, and assert_budget_matched enforces that. The vocoder is already
+    # excluded from that assertion, so it stops when it stops improving and the
+    # step it reached is reported rather than chosen.
+    stopper = (Plateau(patience=patience, min_delta=min_delta)
+               if eval_every and hasattr(adapter, "validate") else None)
+
     prog = Progress(run_id, steps_total, start_step=start)
     t0 = time.time()
     loss_val = float("nan")
@@ -332,21 +362,26 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                 fh.write(json.dumps(rec) + "\n")
 
         if n % ckpt_every == 0 or n == steps_total:
-            ck.save(n, lambda dst: torch.save(
-                {"model": model.state_dict(),
-                 # A list, always, even for one optimiser: a checkpoint whose
-                 # shape depends on the architecture is a second thing that can
-                 # disagree with the config.
-                 "optimizers": [o.state_dict() for o in opts],
-                 # Captured at save time, so a resume continues the same
-                 # random sequence rather than starting a new one.
-                 "rng": {"cpu": torch.get_rng_state(),
-                         "cuda": (torch.cuda.get_rng_state_all()
-                                  if dev.type == "cuda" else [])}},
-                dst / "state.pt"),
-                {"run_id": run_id, "config_hash": cfg.get("config_hash", ""),
-                 "architecture": cfg["architecture"], "loss": loss_val})
-            ck.prune()
+            save_checkpoint(n)
+
+        if stopper is not None and n % eval_every == 0:
+            val = adapter.validate(model, cfg)
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"step": n, "val_mel_l1": val}) + "\n")
+            if val is not None:
+                print(f"{run_id}: step {n}, held-out mel L1 {val:.6f}", flush=True)
+            if stopper.update(n, val):
+                print(f"{run_id}: stopping at step {n}: {stopper.why()}",
+                      flush=True)
+                if n % ckpt_every != 0:
+                    save_checkpoint(n)
+                # Written beside the checkpoints so the reported step count has
+                # the sequence it was decided from next to it.
+                (out_dir / "stopped.json").write_text(json.dumps(
+                    {"step": n, "reason": stopper.why(), "best": stopper.best,
+                     "best_step": stopper.best_step,
+                     "history": stopper.history}, indent=1), encoding="utf-8")
+                break
 
     prog.close(loss_val)
     return LoopResult(run_id=run_id, steps_done=step + 1 if steps_total else 0,

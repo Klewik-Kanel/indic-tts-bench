@@ -35,6 +35,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=pathlib.Path, default=None)
     ap.add_argument("--manifest", type=pathlib.Path, default=None)
     ap.add_argument("--device", default="auto")
+    # The vocoder has no step budget: it is excluded from assert_budget_matched
+    # because it is not an object of comparison. These are deliberately flags
+    # rather than config fields, so they stay out of config_hash and cannot be
+    # mistaken for part of the budget.
+    ap.add_argument("--eval-every", type=int, default=0,
+                    help="run the adapter's held-out validation every N steps "
+                         "and stop when it plateaus; 0 disables it")
+    ap.add_argument("--patience", type=int, default=3,
+                    help="consecutive validation checks without improvement "
+                         "before stopping")
+    ap.add_argument("--min-delta", type=float, default=0.0,
+                    help="how much better counts as better, so fourth-decimal "
+                         "noise does not read as progress forever")
     a = ap.parse_args(argv)
 
     cfg = load_config(a.config)
@@ -51,7 +64,9 @@ def main(argv: list[str] | None = None) -> int:
 
     r = train(cfg, adapter, out_dir=out, max_steps=a.max_steps,
               log_every=a.log_every, ckpt_every=a.ckpt_every,
-              device=a.device, manifest=a.manifest)
+              device=a.device, manifest=a.manifest,
+              eval_every=a.eval_every, patience=a.patience,
+              min_delta=a.min_delta)
     print(json.dumps(r.__dict__), flush=True)
     return 0
 

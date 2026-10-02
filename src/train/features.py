@@ -54,6 +54,30 @@ def cache_path(wav_path: pathlib.Path, sr: int, root: pathlib.Path) -> pathlib.P
     return root / _key(sr) / (wav_path.stem + ".npz")
 
 
+def _spec_and_mel(y, sr: int):
+    """Linear magnitude and log-mel for a waveform in memory.
+
+    Split out of `compute` so the vocoder's validation can recompute the mel of
+    generated audio through the identical path the training mels came from. Two
+    implementations of this would be two conventions, which is the whole
+    problem the vocoder work exists to avoid.
+    """
+    import librosa
+    import numpy as np
+    stft = librosa.stft(y, n_fft=N_FFT, hop_length=HOP, win_length=WIN)
+    spec = np.abs(stft).astype("float32")                     # (513, frames)
+    mel_fb = librosa.filters.mel(sr=sr, n_fft=N_FFT, n_mels=N_MELS,
+                                 fmin=0, fmax=sr // 2)
+    mel = np.log(np.maximum(mel_fb @ spec, 1e-5)).astype("float32")
+    return spec, mel
+
+
+def mel_from_array(y, sr: int):
+    """Log-mel, (frames, n_mels), for a waveform already in memory."""
+    _spec, mel = _spec_and_mel(y, sr)
+    return mel.T
+
+
 def compute(wav_path: pathlib.Path, sr: int, want_pitch: bool = False):
     """Return a dict of float32 arrays for one utterance.
 
@@ -67,11 +91,7 @@ def compute(wav_path: pathlib.Path, sr: int, want_pitch: bool = False):
     import numpy as np
 
     y, _ = librosa.load(wav_path, sr=sr, mono=True)
-    stft = librosa.stft(y, n_fft=N_FFT, hop_length=HOP, win_length=WIN)
-    spec = np.abs(stft).astype("float32")                     # (513, frames)
-    mel_fb = librosa.filters.mel(sr=sr, n_fft=N_FFT, n_mels=N_MELS,
-                                 fmin=0, fmax=sr // 2)
-    mel = np.log(np.maximum(mel_fb @ spec, 1e-5)).astype("float32")
+    spec, mel = _spec_and_mel(y, sr)
     energy = np.linalg.norm(spec, axis=0).astype("float32")
 
     out = {"mel": mel.T, "spec": spec.T, "wav": y.astype("float32"),

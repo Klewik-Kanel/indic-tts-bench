@@ -964,6 +964,62 @@ class HiFiGanAdapter(AdapterBase):
             "waveform": torch.from_numpy(np.stack(waves)).unsqueeze(1),
         }
 
+    def validate(self, model, cfg: dict, n_items: int = 8):
+        """Held-out mel reconstruction error, which is what stops this run.
+
+        Generate audio from dev-set ground-truth mels, recompute the mel of
+        what came out, and take the mean absolute difference against the mel
+        that went in. Analysis-consistent by construction: the recomputation
+        goes through `features.mel_from_array`, which is the same code path
+        that produced every training mel, so the number cannot drift because of
+        a second mel implementation.
+
+        The dev manifest, which no run trains on. `step=0` is passed to collate
+        deliberately, so every check scores the same segments and the number
+        moves because the model moved rather than because the crop did.
+
+        Returns None when it cannot run, which the criterion treats as no
+        evidence rather than as a failure to improve.
+        """
+        import numpy as np
+        import torch
+        from . import batching
+        from . import features as F
+
+        mpath = HERE / "data" / "processed" / cfg["language"] / "dev.tsv"
+        if not mpath.exists():
+            print(f"{cfg.get('run_id')}: no {mpath}, so there is no "
+                  "early-stopping signal and this run will use its step count",
+                  flush=True)
+            return None
+        utts = batching.load_manifest(mpath, int(cfg["sample_rate"]))[:int(n_items)]
+        if not utts:
+            return None
+
+        batch = self.collate(utts, None, cfg, step=0)
+        gen = getattr(model, "model_g", model)
+        device = next(gen.parameters()).device
+        x = batch["input"].to(device)
+        was_training = bool(getattr(gen, "training", False))
+        gen.eval()
+        try:
+            with torch.no_grad():
+                y_hat = gen(x)
+        finally:
+            if was_training:
+                gen.train()
+
+        audio = y_hat.squeeze(1).float().cpu().numpy()
+        want = x.transpose(1, 2).float().cpu().numpy()        # (B, frames, mels)
+        sr = int(cfg["sample_rate"])
+        errs = []
+        for i in range(audio.shape[0]):
+            got = F.mel_from_array(np.ascontiguousarray(audio[i]), sr)
+            n = min(got.shape[0], want[i].shape[0])
+            if n:
+                errs.append(float(np.abs(got[:n] - want[i][:n]).mean()))
+        return float(np.mean(errs)) if errs else None
+
     def loss(self, model, t: dict, optimizer_idx: int = 0):
         """Discriminator loss at index 0, generator loss at index 1."""
         _outputs, loss_dict = model.train_step(t, self._criterion, optimizer_idx)
