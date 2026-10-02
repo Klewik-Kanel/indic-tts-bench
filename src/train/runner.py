@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import pathlib
 import time
 from dataclasses import dataclass
@@ -413,6 +414,25 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                       resumed_from=start)
 
 
+# Fields that are always text, whatever they look like. config_hash is the one
+# that bit: r08's hash is 52e245223208, which Python's float() reads as a valid
+# literal in scientific notation and returns inf for. The run then recorded
+# `config_hash: Infinity` in its config.json and in every checkpoint's
+# meta.json, which is not even valid strict JSON, and the one thing that was
+# supposed to tie the weights back to the config they came from was gone. An
+# all-digit hash would have become an int the same way.
+STRING_KEYS = frozenset({
+    "config_hash", "run_id", "architecture", "language", "input_repr", "data",
+    "init_from", "precision", "lr_schedule", "aligner", "vocoder", "notes",
+})
+
+# Strict, so a hex string is never mistaken for a number. A float needs a
+# decimal point here: every float in these configs has one (lr: 0.0002), and
+# requiring it is what keeps 52e245223208 a string.
+INT_RE = re.compile(r"^[+-]?\d+$")
+FLOAT_RE = re.compile(r"^[+-]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?$")
+
+
 def load_config(path: pathlib.Path) -> dict:
     """Read a run YAML without a YAML dependency.
 
@@ -442,12 +462,12 @@ def load_config(path: pathlib.Path) -> dict:
             cfg[key] = v == "true"
         elif v.startswith(("'", '"')):
             cfg[key] = v[1:-1]
+        elif key in STRING_KEYS:
+            cfg[key] = v
+        elif INT_RE.match(v):
+            cfg[key] = int(v)
+        elif FLOAT_RE.match(v):
+            cfg[key] = float(v)
         else:
-            try:
-                cfg[key] = int(v)
-            except ValueError:
-                try:
-                    cfg[key] = float(v)
-                except ValueError:
-                    cfg[key] = v
+            cfg[key] = v
     return cfg

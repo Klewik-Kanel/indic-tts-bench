@@ -930,3 +930,43 @@ is recorded as done only after it returns, so a failure is retried next cycle.
 
 Verified against a synthetic run tree: newest checkpoint for an in-flight run,
 final for a finished one, and a half-written `.tmp_step_*` save ignored.
+
+## 2026-10-02 — r08's config hash was recorded as Infinity
+
+Found by writing `scripts/verify_queue.py`, which recomputes each config's hash
+from `plan_runs` and compares it against the YAML. One run disagreed, and the
+reason was not the YAML.
+
+`load_config` tried `int()` then `float()` on every unquoted value. A 12-hex
+config hash is sometimes a valid float literal:
+
+    r08's hash   52e245223208
+    float(...)   inf
+
+So r08 trained with `cfg["config_hash"] = inf`, and wrote `config_hash:
+Infinity` into `runs/r08/config.json` and into all five of its checkpoints'
+`meta.json`. `Infinity` is not valid strict JSON, so a conforming parser refuses
+those files outright. The standing rule is that no number reaches the paper that
+cannot be regenerated from a config file; for r08 the field that connects the
+two said infinity.
+
+Only r08 of the nineteen is affected, because only its hash happens to parse.
+An all-digit hash would have become an int by the same route, silently and
+without even looking odd.
+
+**Fixed in the loader.** `STRING_KEYS` names the fields that are always text,
+and the numeric patterns are now strict: an int must be all digits, and a float
+must contain a decimal point. Every float in these configs has one, so nothing
+that was a number stops being one, which `tests/test_config_loader.py` checks
+over all nineteen real configs alongside the r08 case, the all-digit case and
+`inf`, `nan` and `1e999`.
+
+**Already-written metadata is repaired separately**, by
+`scripts/repair_config_hash.py`, which rewrites only a `config_hash` that is not
+a string, takes the replacement from `configs/<run>.yaml`, touches no tensors,
+and reports before it writes. It dumps with `allow_nan=False` so an invalid
+value cannot be written back out.
+
+r08's weights are unaffected. What was lost was the record of which config
+produced them, and that is recoverable because the config file itself was always
+correct.
