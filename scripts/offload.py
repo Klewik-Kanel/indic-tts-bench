@@ -24,8 +24,8 @@ minutes costs almost nothing after the first pass.
 src/export/bundle.py rather than raw checkpoints, so bundles are uploaded too
 once they exist.
 
-    export HF_REPO=<your-username>/indic-tts-bench
-    python scripts/offload.py
+    python scripts/offload.py                  # Klewik/indic-tts-bench by default
+    HF_REPO=other/repo python scripts/offload.py
     python scripts/offload.py --dry-run        # list what would go, send nothing
 """
 
@@ -113,7 +113,10 @@ def load_state() -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--repo-id", default=os.environ.get("HF_REPO", ""))
+    # Defaulted so a restarted loop cannot silently back up nothing because
+    # somebody forgot an export. HF_REPO still overrides it.
+    ap.add_argument("--repo-id",
+                    default=os.environ.get("HF_REPO", "Klewik/indic-tts-bench"))
     ap.add_argument("--private", action="store_true", default=True)
     a = ap.parse_args(argv)
 
