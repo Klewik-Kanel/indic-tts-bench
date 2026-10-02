@@ -30,6 +30,7 @@ from typing import Protocol
 from . import batching, schedule
 from .progress import Progress
 from .checkpoint import CheckpointDir, RetentionPolicy
+from .devices import move_criterion
 from .earlystop import Plateau
 from .text import TextEncoder, Vocab
 
@@ -211,6 +212,15 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
               flush=True)
 
     model = adapter.build(vocab_size, cfg).to(dev)
+
+    # The model is not the only thing with tensors in it. coqui's loss modules
+    # hold an STFT window built on the CPU at construction, and nothing else
+    # moves them, so the first spectral loss on the GPU fails with "stft input
+    # and window must be on the same device". See src/train/devices.py.
+    moved = move_criterion(adapter, dev)
+    if moved:
+        print(f"{run_id}: moved to {dev}: {', '.join(sorted(set(moved))[:6])}"
+              f"{' and more' if len(set(moved)) > 6 else ''}", flush=True)
 
     # One optimiser for most architectures, two for an adversarial one. The
     # adapter decides, because the split is a property of the model: see
