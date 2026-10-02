@@ -1029,3 +1029,49 @@ assuming a step count.
 regenerated, so r06 is `3120211db4c7` and r17 is `99a3999ca13e`. Setting it there
 rather than editing the YAML keeps `config_hash` honest, which is what
 `verify_queue.py` checks.
+
+## 2026-10-02 — r06 verified end to end, and the vocoder path is closed
+
+Dry-run output, on the real model with the real checkpoint:
+
+    r06: no text front end, architecture hifigan
+    r06: warm start from /workspace/vocoders/hifigan_lj_generator.ckpt
+      mapped 234 of 404 target tensors (target naming: parametrizations, prefix: model_g.)
+      234 generator tensor(s) loaded
+    r06: moved to cuda: DiscriminatorLoss, GeneratorLoss, L1Loss, L1SpecLoss, MSEDLoss, MSEGLoss
+    r06  step 1/2  loss 41.7214
+    r06  step 2/2  loss 41.3006
+
+    weights: resumed run is bit-identical to an uninterrupted 4-step run across 404 tensors
+    OK: resumed from step 2, finished at 4, loss 41.7208 -> 39.8516
+
+234 of 404 is the expected split: 234 generator tensors and 170 in the MPD and
+MSD discriminators, which a generator-only checkpoint cannot supply and which
+therefore start fresh. That is stated in the run's own output rather than
+inferred later.
+
+The resume check is the one that matters for this adapter. Its segment crop is
+hashed from (seed, step, utterance id) rather than drawn from an RNG, and the
+only way to know that reproduces across a restart is to kill a run and compare
+weights. Bit-identical across all 404 tensors, so it does.
+
+Three defects were fixed getting here, and each would have been silent or
+misattributed:
+
+1. `TextEncoder.for_config(language, "none")` raises, and the loop called it
+   before any adapter was built, so r06 died before `init_from` was read.
+2. A straight `load_state_dict` matched zero tensors, because torch renamed
+   weight-norm storage from `X.weight_g` to
+   `X.parametrizations.weight.original0` and every published checkpoint
+   predates that.
+3. coqui's loss modules hold an STFT window built on the CPU at construction,
+   and the loop moved only the model, so the first spectral loss on the GPU
+   failed on a device mismatch.
+
+The resume check ran on the CPU, because the GPU had 2.75 GiB free beside r02
+and r05 and `--kill-at` runs three trainings. Checkpointing, RNG restoration
+and the crop are device-independent, so the proof stands. When the queue reaches
+pair 7 the card is free and the fraction will be 0.45, which is 17.73 GiB
+against the 6.34 this used.
+
+r06 and r17 now need nothing. `verify_queue.py` reports no blockers.
