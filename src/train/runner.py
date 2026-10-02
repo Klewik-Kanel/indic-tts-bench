@@ -147,9 +147,20 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
         json.dumps(cfg, indent=1, ensure_ascii=False, sort_keys=True),
         encoding="utf-8")
 
-    enc = TextEncoder.for_config(cfg["language"], cfg["input_repr"],
-                                 merge_nukta=bool(cfg.get("merge_nukta", False)))
-    enc.vocab.save(out_dir / "vocab.json")
+    if bool(getattr(adapter, "needs_text", True)):
+        enc = TextEncoder.for_config(cfg["language"], cfg["input_repr"],
+                                     merge_nukta=bool(cfg.get("merge_nukta", False)))
+        enc.vocab.save(out_dir / "vocab.json")
+        vocab_size = len(enc.vocab)
+    else:
+        # The vocoder takes mel and waveform and no text. input_repr is "none"
+        # for it, and TextEncoder.for_config raises on "none" because there is
+        # genuinely no vocabulary to build. So no encoder, and no vocab.json:
+        # a run with no vocabulary must not write a file claiming to have one.
+        enc = None
+        vocab_size = 0
+        print(f"{run_id}: no text front end, architecture "
+              f"{cfg['architecture']}", flush=True)
 
     mpath = manifest or (HERE / "data" / "processed" / cfg["language"] /
                          ("train.tsv" if cfg["data"] == "train"
@@ -199,7 +210,7 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
               f"({float(frac) * torch.cuda.get_device_properties(0).total_memory / 2**30:.1f} GiB)",
               flush=True)
 
-    model = adapter.build(len(enc.vocab), cfg).to(dev)
+    model = adapter.build(vocab_size, cfg).to(dev)
 
     # One optimiser for most architectures, two for an adversarial one. The
     # adapter decides, because the split is a property of the model: see

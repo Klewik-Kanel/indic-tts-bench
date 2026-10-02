@@ -93,6 +93,11 @@ class AdapterBase:
     """
 
     n_optimizers = 1
+    # Whether this architecture takes text. A vocoder does not: it maps mel to
+    # waveform. config.py enforces input_repr == "none" for hifigan and there is
+    # no vocabulary for "none", so TextEncoder.for_config raises on it. The loop
+    # asks this before building an encoder rather than building one and hoping.
+    needs_text = True
     want_pitch = False
     # The arrays this architecture's collate actually indexes. Only these are
     # read from the feature cache: see features.load_or_compute for why the
@@ -758,6 +763,7 @@ class HiFiGanAdapter(AdapterBase):
     name = "hifigan"
     n_optimizers = 2
     needs = ("mel", "wav")
+    needs_text = False
     # The crop offset is derived from (seed, step, utterance id): see the note
     # in runner._collated for why this is not drawn from a global RNG.
     wants_step = True

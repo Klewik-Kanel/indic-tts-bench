@@ -140,7 +140,12 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
     out = pathlib.Path(out_root) / f"{cfg['run_id']}_step{step}"
     out.mkdir(parents=True, exist_ok=True)
     torch.save(weights, out / "model.pt")
-    shutil.copy2(run_dir / "vocab.json", out / "vocab.json")
+    # A vocoder has no vocabulary, so its run writes no vocab.json and its
+    # bundle cannot carry one. Copying unconditionally raised FileNotFoundError
+    # and took the export down with it.
+    has_vocab = (run_dir / "vocab.json").exists()
+    if has_vocab:
+        shutil.copy2(run_dir / "vocab.json", out / "vocab.json")
 
     manifest = {
         "bundle_version": BUNDLE_VERSION,
@@ -170,7 +175,7 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
         "exported_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "files": {},
     }
-    for name in ("model.pt", "vocab.json"):
+    for name in ("model.pt", "vocab.json") if has_vocab else ("model.pt",):
         f = out / name
         manifest["files"][name] = {"bytes": f.stat().st_size, "sha256": sha256(f)}
 

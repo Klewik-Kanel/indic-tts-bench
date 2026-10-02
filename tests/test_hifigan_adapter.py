@@ -268,3 +268,27 @@ def test_the_crop_never_reads_past_the_end_of_the_audio():
          "wav": np.zeros(n * F.HOP, dtype="float32")}]
     out = a.collate([FakeUtt("u000", n)], None, cfg(), step=3)
     assert out["waveform"].shape == (1, 1, seg * F.HOP)
+
+
+# --- the vocoder has no text front end --------------------------------------
+
+def test_only_the_vocoder_declares_that_it_needs_no_text():
+    """The loop builds a TextEncoder unless an adapter says not to.
+
+    `TextEncoder.for_config(lang, "none")` raises ValueError, because there
+    genuinely is no vocabulary for "none", and config.py enforces that
+    input_repr for hifigan. Without this flag r06 and r17 died before the
+    adapter was built, which no amount of checkpoint preparation would fix.
+    """
+    assert adapters.HiFiGanAdapter.needs_text is False
+    for other in (adapters.ToyAdapter, adapters.FastSpeech2Adapter,
+                  adapters.VitsAdapter, adapters.MatchaAdapter):
+        assert other.needs_text is True
+
+
+def test_the_encoder_really_does_refuse_none():
+    """The reason the flag exists, asserted rather than assumed."""
+    from src.train.text import TextEncoder
+
+    with pytest.raises(ValueError, match="none"):
+        TextEncoder.for_config("hindi", "none")

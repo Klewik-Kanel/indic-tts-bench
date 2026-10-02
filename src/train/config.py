@@ -63,6 +63,13 @@ BUDGET = {
 # the main run and would have cost GPU hours twice.
 COSMETIC = {"notes", "created", "run_id"}
 
+# The checkpoint r06 and r17 warm-start from, once one is on the machine. It
+# lives here rather than being edited into configs/r06.yaml by hand, because
+# init_from is part of config_hash: a hand edit makes the file disagree with the
+# matrix, which scripts/verify_queue.py reports as drift and is right to. Set
+# this, then run `python -m src.train.config --write` to regenerate.
+VOCODER_INIT = ""
+
 
 @dataclass(frozen=True)
 class RunConfig:
@@ -318,7 +325,7 @@ def plan_runs() -> list[RunConfig]:
 
     # Vocoder, shared by the non-end-to-end architectures
     runs.append(RunConfig(run_id="r06", architecture="hifigan", language="hindi",
-                          input_repr="none", data="9h",
+                          input_repr="none", data="9h", init_from=VOCODER_INIT,
                           notes="fine-tuned on ground-truth mels; shared by r01 and r03"))
 
     # Data ladder. The 9 h rung is NOT listed: it is r01 and r02, which train
@@ -345,7 +352,7 @@ def plan_runs() -> list[RunConfig]:
                           notes="control arm: identical settings, schwa deletion off"))
     runs.append(vits("r16", "marathi", "phoneme", "9h"))
     runs.append(RunConfig(run_id="r17", architecture="hifigan", language="marathi",
-                          input_repr="none", data="9h",
+                          input_repr="none", data="9h", init_from=VOCODER_INIT,
                           notes="shared by r15"))
     runs.append(RunConfig(run_id="r18", architecture="fastspeech2", language="marathi",
                           input_repr="grapheme", data="9h", vocoder="hifigan_marathi",
