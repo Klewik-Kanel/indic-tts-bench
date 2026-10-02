@@ -801,3 +801,65 @@ each. Five mel-based runs have not started. Deciding before r07 and r08 finish
 costs nothing extra; letting them finish and then changing the convention
 spends that time for nothing. The eight VITS runs are unaffected whatever is
 decided.
+
+## 2026-10-02 — fit the vocoder to our mels, rather than our mels to a vocoder
+
+Constraint stated: the trained parameters are not to be discarded, GPU access is
+finite, and the study's credibility comes first. Those three pick one route, and
+it is the one that was dropped this morning, warm-started.
+
+**Reinstate r06 and r17 as fine-tuning, not as training from scratch.**
+
+    already in the bank, preserved     r01 6.83 h + r04 6.73 h complete,
+                                       r07 and r08 3.7 h each in flight = 21.0 h
+    retrain to an 8 kHz convention     39.2 h contended, and discards those 21.0 h
+    fit the vocoder to our convention  19.6 h contended at full length, discards nothing
+                                       7.0 h on an idle card, the figure used on 2 Oct
+
+Half the GPU cost of the retraining route, and nothing already computed is
+thrown away.
+
+**Why this is the stronger position scientifically, not a compromise.** The
+three-axis mismatch disappears rather than being worked around: a vocoder
+fitted to our own ground-truth mels is fitted to our band, our amplitude
+convention and our STFT framing at once, whatever they happen to be. The
+pretrained route needed all three to coincide. This one needs none of them to.
+
+It also deletes a deviation instead of adding one. "Vocoder not trained on the
+corpus and not matched to the speaker" was recorded this morning as the price of
+the decision. Fine-tuning on the corpus removes that sentence from the methods
+table, and a corpus-matched vocoder is the ordinary expectation in the TTS
+literature rather than something needing defence. The alternative that costs no
+GPU, converting between mel conventions with a pseudo-inverse at synthesis
+time, would have put a lossy step that nobody else uses inside the audio path of
+nine runs, and would have needed its own error analysis to be believed.
+
+**The warm start is genuinely close**, which is why this is cheaper than the
+7.0 h the original pair was budgeted at. Our amplitude convention is already
+byte-for-byte what jik876, BigVGAN and Matcha use: `log(clamp(mel, 1e-5))`, no
+dB, no normalisation. Only the band and 128 samples of padding differ, so a
+published checkpoint starts near the right answer and has to move in two
+parameters' worth of ways, not in all of them.
+
+**Step count is to be measured, not assumed.** [Inference] Warm-started HiFi-GAN
+fine-tuning on one speaker converges in thousands of steps rather than the
+100,000 a fresh run takes, but that is the literature's general behaviour and not
+a measurement from this corpus. So the run gets a stopping criterion rather than
+a step budget: mel reconstruction error on held-out ground-truth audio, stopped
+when it plateaus, and the step count it reached is reported. This is the one
+place where the fixed-budget rule does not apply, because the vocoder is not an
+object of comparison in the study. That exemption gets stated in the methods
+table rather than left implicit.
+
+**What unblocks immediately, before any vocoder exists.** The mel-domain
+metrics need no vocoder at all: predicted against ground-truth mel distortion
+with DTW alignment, and duration or alignment accuracy. r01 and r04 can be
+scored on those today. What waits for the vocoder is anything computed from a
+waveform: ASR-WER, the UTMOSv2 and NISQA proxies, the stress-test error rates
+and the listening test.
+
+**Open, and smaller than before.** One vocoder per language or one for both.
+r06 and r17 existed separately because the speaker differs, and using a
+Hindi-fitted vocoder on Marathi audio would put a speaker mismatch inside the
+control that exists to isolate language. Two seems right for that reason, and it
+is the difference between 19.6 h and roughly half of it.
