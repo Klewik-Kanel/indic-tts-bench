@@ -29,6 +29,7 @@ import argparse
 import datetime
 import json
 import math
+import os
 import pathlib
 
 from . import batching, features as F
@@ -61,7 +62,9 @@ def compute(language: str, sample_rate: int = 22_050,
     if not utts:
         raise SystemExit(f"{mpath}: no utterances")
 
-    root = HERE / "data" / "cache" / language
+    # Same knob the training loop honours; see AdapterBase._features.
+    root = pathlib.Path(os.environ.get("TRAIN_CACHE_ROOT")
+                        or (HERE / "data" / "cache")) / language
     n = 0
     total = 0.0
     total_sq = 0.0

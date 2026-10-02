@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import os
 import json
 import math
 import pathlib
@@ -109,7 +110,18 @@ class AdapterBase:
         import numpy as np
         from . import features as F
         sr = int(cfg["sample_rate"])
-        root = HERE / "data" / "cache" / cfg["language"]
+        # TRAIN_CACHE_ROOT moves the feature cache off the shared filesystem.
+        # Measured on the DGX on 2 October: Lustre gave 37 to 83 MB/s while a
+        # VITS step needs 36.9 MB and two runs at full speed need 117 MB/s, so
+        # the loop was waiting on the mount and the GPU sat at 45%.
+        #
+        # This cannot change what a run computes. features.cache_path keys every
+        # entry on the analysis parameters, so a cache under a different root
+        # holds the same arrays for the same inputs or it holds nothing and they
+        # are recomputed. Like TRAIN_GPU_FRACTION and TRAIN_THREADS it is a
+        # scheduling knob and not part of the budget.
+        root = pathlib.Path(os.environ.get("TRAIN_CACHE_ROOT")
+                            or (HERE / "data" / "cache")) / cfg["language"]
         return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
                                   want_pitch=self.want_pitch,
                                   keys=self.needs or None) for u in batch]
