@@ -76,27 +76,44 @@ def last_rate() -> tuple[float, str]:
     return float(value) * mult, f"{value} {unit}/s"
 
 
-def alive(pattern: str) -> int:
-    """Count matching processes, excluding this one and the shell that ran it.
+def alive(script: str) -> int:
+    """Processes genuinely running `script`, read from /proc argv.
 
-    `pgrep -f` matches the whole command line, so a shell whose own arguments
-    mention the filename counts as a hit. Pasting a command that contains
-    "offload_loop.sh" would otherwise report the loop as running when it is not,
-    which is the opposite of useful in a status tool.
+    Not `pgrep -f`, which matches the entire command line as one string: a shell
+    invoked with a long -c argument that happens to mention "offload_loop.sh"
+    then counts as the loop running, and a status tool that says a backup is
+    running when it is not is worse than one that says nothing. Here each
+    process's argv is split properly, and a match needs an interpreter in argv[0]
+    and the script as an argument of its own.
     """
-    skip = {os.getpid(), os.getppid()}
-    try:
-        out = subprocess.run(["pgrep", "-af", pattern], capture_output=True,
-                             text=True, timeout=10).stdout
-    except Exception:                                     # noqa: BLE001
-        return 0
+    me = {os.getpid()}
+    pid = os.getpid()
+    for _ in range(12):                 # walk up: the shell that ran us is not it
+        try:
+            stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+            pid = int(stat.rsplit(")", 1)[1].split()[1])
+        except Exception:                                 # noqa: BLE001
+            break
+        if pid <= 1:
+            break
+        me.add(pid)
+
     n = 0
-    for line in out.splitlines():
-        pid, _, rest = line.partition(" ")
-        if not pid.isdigit() or int(pid) in skip:
+    proc = pathlib.Path("/proc")
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) in me:
             continue
-        # A shell that merely mentions the name is not the thing running it.
-        if re.search(r"(bash|sh|python[\d.]*)\s+\S*" + re.escape(pattern), rest):
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except Exception:                                 # noqa: BLE001
+            continue
+        args = [a.decode("utf-8", "replace") for a in argv if a]
+        if not args:
+            continue
+        exe = pathlib.PurePosixPath(args[0]).name
+        if not re.match(r"^(ba|da|z|k)?sh$|^python[\d.]*$|^env$", exe):
+            continue
+        if any(pathlib.PurePosixPath(arg).name == script for arg in args[1:]):
             n += 1
     return n
 
