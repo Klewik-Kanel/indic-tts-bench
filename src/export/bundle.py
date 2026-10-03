@@ -60,7 +60,12 @@ AUDIO = {k: v for k, v in project_mel(22_050).items()
          if k in ("n_fft", "hop_length", "n_mels", "win_length")}
 # 2: the manifest's "vocoder_bundle" string became a "vocoder" block that
 # records whether the mel front end was actually checked.
-BUNDLE_VERSION = 2
+# 3: "lr" is recorded. VitsAdapter.build reads cfg["lr"] to set coqui's lr_disc
+# and lr_gen, so rebuilding the model for inference needs the value even though
+# neither learning rate enters the inference graph. Carrying the real number is
+# better than having src/export/synthesize.py invent one that then looks like a
+# hyperparameter to anyone reading it.
+BUNDLE_VERSION = 3
 
 
 def resolve_vocoder(spec: str, sample_rate: int) -> dict:
@@ -165,6 +170,7 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
                else ", no medial schwa deletion" if cfg["input_repr"] == "phoneme"
                else ", raw characters, no front end")),
         "sample_rate": cfg["sample_rate"],
+        "lr": cfg.get("lr"),
         "audio": audio,
         "needs_vocoder": cfg["architecture"] in ("fastspeech2", "matcha"),
         "vocoder": voc,

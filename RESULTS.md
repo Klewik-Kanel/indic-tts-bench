@@ -1231,3 +1231,61 @@ OOV before the repair existed.
 r15 dry-ran clean and r18 died at step 1 with the slot already spent. The gate
 sits before the memory fractions are computed and skips a vocoder, whose
 `input_repr` is `none` and which has no vocabulary to check.
+
+## 2026-10-03 — the demo runs on CPU, not on the GPU
+
+The demo was first framed as a choice between live inference hosted on the DGX
+and a static page of pre-rendered audio, on the grounds that the card is
+temporary. That framing was wrong. Inference is a CPU workload; the GPU is for
+training. The real choice is only where the CPU lives, and the DGX was simply
+where the checkpoints and the environment already were.
+
+**Decision: a Hugging Face Space.** The weights are already in
+`Klewik/indic-tts-bench`, so a Space loads a bundle from the repo it is
+offloaded to and runs the same Python front end that trained the model. Nothing
+is ported, so nothing can diverge. It outlives the GPU access, takes free text
+rather than a fixed sentence list, and an examiner can reach it from a link.
+
+The two alternatives and why not. A static page with pre-rendered audio cannot
+take a sentence nobody anticipated, though it remains the right shape for the
+listening test, where a fixed set is a requirement. In-browser ONNX needs
+`normalize.py`, `devanagari.py`, `schwa.py` and `numbers.py` reimplemented in
+JavaScript, and a schwa-deletion bug in that port would silently change the
+thing the dissertation is about. That is the one component where a
+reimplementation is not acceptable.
+
+**r02 and r05 can be demonstrated now.** VITS is end to end, so those two need
+no vocoder at all, and they are the pair the central phonemic-versus-graphemic
+ablation rests on. The four FastSpeech 2 runs emit mels and stay silent until
+r06 and r17 finish; Griffin-Lim would make them audible immediately and would
+match the project's mel definition exactly, but it cannot be presented as the
+system's quality and would have to be labelled as a placeholder in the
+interface.
+
+**coqui's inference surface, measured rather than assumed.**
+
+    ForwardTTS.inference(x, aux_input={'d_vectors', 'speaker_ids'})
+      model_outputs  [B, T_frames, n_mels]      mel, silent on its own
+    Vits.inference(x, aux_input={'x_lengths', 'd_vectors', ...})
+      model_outputs  [B, 1, N]                  waveform
+
+A 24-token input gave 48 frames and 12,288 samples, which is hop 256 confirmed
+from the other direction. Note the mel orientation: coqui returns frames first,
+while the HiFi-GAN generator takes `[B, n_mels, T]`. `synthesize.py` transposes
+once, on the way out, so mels leave it as `[n_mels, T]` and agree with both the
+vocoder and `features.compute`. A mel handed over the wrong way round produces
+audio that is recognisably speech and subtly wrong, which is the failure nobody
+catches in a demo room.
+
+**`src/export/synthesize.py`** is the single synthesis path, used by both the
+Space and the listening test. It rebuilds the model through the adapter that
+trained it, loads the bundle's own `vocab.json` rather than rebuilding one,
+encodes through the same `TextEncoder`, and loads weights with `strict=True`.
+It returns a mel and says so for the mel architectures instead of inventing a
+waveform.
+
+`BUNDLE_VERSION` is 3: the manifest now records `lr`, because
+`VitsAdapter.build` reads it to set coqui's `lr_disc` and `lr_gen`. Neither
+enters the inference graph, but carrying the real value is better than having
+the synthesis module invent a number that then reads as a hyperparameter.
+Nothing needed re-exporting, since no bundle had been produced yet.
