@@ -38,6 +38,21 @@ jobs/*/output/
 # bundles are reproducible from runs/ and live on the Hub
 exports/
 
+# A run directory is the training box's own state: logs, configs and
+# checkpoints for one run. checkpoints/ and *.pt are ignored above, so what was
+# left showing as untracked was the logs and configs, which still do not belong
+# in git. Listed explicitly because on 3 October `git status` on the DGX showed
+# `runs/` as untracked next to real staged work, which is exactly the situation
+# where somebody reaches for `git add -A`.
+runs/
+
+# The feature cache. Keyed on the analysis parameters and rebuilt on demand,
+# and large: see src/train/features.py.
+data/cache/
+
+# Jupyter's autosaves, which appeared in three directories at once.
+.ipynb_checkpoints/
+
 # The static demo's audio is the deliverable, not a build artefact: a Static
 # Space serves files and runs nothing, so these have to be in the repo. They
 # are small (16 kHz mono PCM, a few seconds each) and regenerable with
