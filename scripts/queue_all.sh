@@ -47,7 +47,11 @@ OFFLOAD=${OFFLOAD:-1}                      # back up after each pair
 # open (see RESULTS, 3 Oct, init_from) and every VITS run has to share whatever
 # it settles on, the four ladder rungs included.
 PAIRS=(
-  "r02 r05"      # Hindi VITS: done at 100k, pending a decision on re-running
+  "r02 r05"      # Hindi VITS: DONE at 100k and NOT being re-run. Decided on
+                 # 3 Oct to keep the trained weights as they are; see the
+                 # corrections in configs/r02.yaml. Listed because PAIRS is the
+                 # matrix, not a to-do list, which is what makes re-arming
+                 # idempotent: finished() skips any run with step_100000.
   "r06 r17"      # the two vocoders, fine-tuned on our own mels
   "r20 r21"      # seed variance floor: r01's cell at seeds 1 and 2
   "r15 r18"      # Marathi FastSpeech 2: the control's two arms
