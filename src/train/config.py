@@ -350,6 +350,17 @@ def plan_runs() -> list[RunConfig]:
     #                       input_repr="phoneme", data="9h", vocoder="hifigan_hindi",
     #                       init_from="matcha_ljspeech", deviations=MATCHA_DEVIATIONS))
 
+    # VITS seed floor. r02's cell at seeds 1 and 2. A noise floor is
+    # architecture-specific, so the FastSpeech 2 pair below says nothing about
+    # how far apart two VITS runs land. This pair matters more in practice:
+    # VITS is end to end, so r02 and r05 can be scored with no vocoder, which
+    # makes the phonemic-versus-graphemic contrast the FIRST result obtainable
+    # rather than the last. Reporting that contrast without a scale under it
+    # was the thing the FastSpeech 2 pair was added to prevent.
+    for rid, seed in (("r22", 1), ("r23", 2)):
+        runs.append(vits(rid, "hindi", "phoneme", "9h", seed=seed,
+                         notes=f"seed variance floor: r02's cell at seed {seed}"))
+
     # Seed variance floor. r01's cell again, changing only the seed, so the
     # spread across r01, r20 and r21 is the smallest difference this setup can
     # resolve. Plan v3's standing rule says no difference between two runs is

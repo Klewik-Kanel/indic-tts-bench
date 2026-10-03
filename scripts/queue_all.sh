@@ -52,8 +52,11 @@ PAIRS=(
                  # corrections in configs/r02.yaml. Listed because PAIRS is the
                  # matrix, not a to-do list, which is what makes re-arming
                  # idempotent: finished() skips any run with step_100000.
+  "r22 r23"      # VITS seed floor, FIRST: r02 and r05 are scorable with no
+                 # vocoder, so this is the shortest path to one complete,
+                 # interpretable result. Ahead of the vocoders deliberately.
   "r06 r17"      # the two vocoders, fine-tuned on our own mels
-  "r20 r21"      # seed variance floor: r01's cell at seeds 1 and 2
+  "r20 r21"      # FastSpeech 2 seed floor: r01's cell at seeds 1 and 2
   "r15 r18"      # Marathi FastSpeech 2: the control's two arms
   "r16 r19"      # Marathi VITS: the control's two arms
   "r11 r12"      # VITS ladder, 5 h and 1 h

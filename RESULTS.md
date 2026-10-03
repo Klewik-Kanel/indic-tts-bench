@@ -1635,3 +1635,46 @@ estimates. Found after the write-up, there is no response.
 Queued behind the vocoders and ahead of the ladder, which matters: if the floor
 is wide, the smallest ladder rungs are where it is widest and the claims
 thinnest, so the result should be known before 30 GPU-h goes into them.
+
+## 2026-10-03 — a VITS seed floor first, and a check that would have caught the MMS gap
+
+**r22 and r23: r02's cell at seeds 1 and 2, queued ahead of the vocoders.** A
+noise floor is architecture-specific, so the FastSpeech 2 pair says nothing
+about how far apart two VITS runs land, and VITS is the half that can be scored
+first: it is end to end, so r02 and r05 need no vocoder. That makes the
+phonemic-versus-graphemic contrast the first result obtainable rather than the
+last, and reporting it without a scale underneath was the thing the seed work
+exists to prevent. Sequenced first, the chain is r15 and r18 finishing at 1.5 h
+then this pair at 9.7 h, so the central comparison is complete and interpretable
+about eleven hours from now instead of on Wednesday. 9.7 h moves the slack
+before 11 October from 5.2 days to 4.8. The matrix is 22 runs.
+
+**`assert_init_from_is_honest`, at `adapters.for_config`.** A config may not
+claim a warm start its adapter never performs. r02 declared
+`init_from: facebook/mms-tts-hin`, `VitsAdapter.build` never read it, and the
+config, the deviations table and the class docstring all stated the 16 kHz rate
+was inherited from that checkpoint. Nothing failed and nothing warned. Eight
+runs carried wrong provenance until the audio was listened to and the cause
+traced backwards. `for_config` is the one chokepoint where a config meets an
+adapter, so the check sits there and covers training, dry runs and evaluation
+alike.
+
+The decided case has to pass or the queued VITS runs could not start, so the
+rule is that a mismatch is allowed exactly when a `corrections` entry mentions
+`init_from` — that is, when somebody has written down what is wrong and why.
+`reads_init_from` defaults to False on `AdapterBase`, which makes a new adapter
+that forgets the flag refuse rather than silently claim to honour a warm start.
+A correction about something else does not excuse it, because a check that any
+correction satisfies is decoration.
+
+Verified against the real matrix: all 22 runs pass, so nothing queued is
+blocked. 12 assertions, half on the cases that must refuse, including that the
+refusal message names all three remedies — implement the warm start, clear
+`init_from`, or record a correction. A refusal that does not name the remedy
+gets worked around.
+
+**The 500-step dry run per architecture is removed from the plan, not done.**
+Eight runs reaching 100,000 steps is far stronger evidence that every
+architecture works than a 500-step job would be, and the queue already dry-runs
+two steps before each pair. Performing it now would tick a box and tell us
+nothing.

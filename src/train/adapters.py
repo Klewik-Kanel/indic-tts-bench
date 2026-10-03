@@ -100,6 +100,12 @@ class AdapterBase:
     # asks this before building an encoder rather than building one and hoping.
     needs_text = True
     want_pitch = False
+    # Whether this architecture's build() actually reads cfg["init_from"]. The
+    # VITS adapter declared a warm start from MMS for weeks and never loaded
+    # it, so eight runs trained from scratch while their configs said
+    # otherwise and nothing noticed until the audio was listened to. This flag
+    # is what assert_init_from_is_honest checks against.
+    reads_init_from = False
     # The arrays this architecture's collate actually indexes. Only these are
     # read from the feature cache: see features.load_or_compute for why the
     # difference is measurable rather than cosmetic. A key missing from this
@@ -563,6 +569,7 @@ class MatchaAdapter(AdapterBase):
 
     name = "matcha"
     needs = ("mel",)
+    reads_init_from = True        # assert_init_is_comparable, then load
 
     # --- the corpus statistics, which are a precondition and not a default ---
 
@@ -776,6 +783,7 @@ class HiFiGanAdapter(AdapterBase):
     n_optimizers = 2
     needs = ("mel", "wav")
     needs_text = False
+    reads_init_from = True        # _warm_start, verified on 2 Oct
     # The crop offset is derived from (seed, step, utterance id): see the note
     # in runner._collated for why this is not drawn from a global RNG.
     wants_step = True
@@ -1080,8 +1088,42 @@ def assert_not_toy(cfg: dict) -> None:
             "must not appear in a config that produces a number")
 
 
+def assert_init_from_is_honest(cfg: dict, adapter) -> None:
+    """A config may not claim a warm start its adapter never performs.
+
+    This is the check that would have caught the MMS gap on day one. r02
+    declared `init_from: facebook/mms-tts-hin`, `VitsAdapter.build` never read
+    it, and the config, the deviations table and the class docstring all said
+    the 16 kHz rate was inherited from that checkpoint. Nothing failed, nothing
+    warned, and eight runs' provenance was wrong until someone listened to the
+    audio and worked backwards.
+
+    The acknowledged case is allowed through. On 3 October the decision was to
+    keep those weights rather than re-run them, and that decision is recorded
+    in the non-hashed `corrections` field of every affected config. So a
+    mismatch passes only when a correction mentions `init_from`, which means
+    somebody wrote down what is wrong and why. An unacknowledged mismatch
+    refuses to start.
+    """
+    declared = str(cfg.get("init_from") or "").strip()
+    if not declared or getattr(adapter, "reads_init_from", False):
+        return
+    corrections = cfg.get("corrections") or ()
+    if any("init_from" in str(c) for c in corrections):
+        return
+    raise SystemExit(
+        f"{cfg.get('run_id')}: config declares init_from={declared!r} but "
+        f"{type(adapter).__name__} never reads it, so this run would train "
+        "from scratch while its provenance says otherwise. Fix one of three "
+        "things: implement the warm start in the adapter, set init_from to '' "
+        "in config.py and regenerate, or add a correction mentioning "
+        "init_from that records what is wrong and why.")
+
+
 def for_config(cfg: dict):
     arch = cfg["architecture"]
     if arch not in ADAPTERS:
         raise SystemExit(f"{cfg.get('run_id')}: no adapter for {arch!r}")
-    return ADAPTERS[arch]()
+    adapter = ADAPTERS[arch]()
+    assert_init_from_is_honest(cfg, adapter)
+    return adapter
