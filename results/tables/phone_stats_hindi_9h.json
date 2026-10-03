@@ -1,0 +1,588 @@
+{
+ "language": "hindi",
+ "data": "9h",
+ "split": "data/processed/hindi/ladder/9h.tsv",
+ "utterances": 4793,
+ "words": 87316,
+ "phone_tokens": 350391,
+ "distinct_phones": 72,
+ "words_ending_in_a_deletion_derived_consonant": 27912,
+ "phones": [
+  {
+   "phone": "ə",
+   "rank": 1,
+   "count": 34103,
+   "per_1k": 97.328,
+   "word_final": 278,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "aː",
+   "rank": 2,
+   "count": 29467,
+   "per_1k": 84.097,
+   "word_final": 9029,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "k",
+   "rank": 3,
+   "count": 22585,
+   "per_1k": 64.457,
+   "word_final": 2097,
+   "word_final_by_deletion": 2095
+  },
+  {
+   "phone": "eː",
+   "rank": 4,
+   "count": 21822,
+   "per_1k": 62.279,
+   "word_final": 13734,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "r",
+   "rank": 5,
+   "count": 19875,
+   "per_1k": 56.722,
+   "word_final": 6761,
+   "word_final_by_deletion": 6758
+  },
+  {
+   "phone": "n",
+   "rank": 6,
+   "count": 15228,
+   "per_1k": 43.46,
+   "word_final": 2645,
+   "word_final_by_deletion": 2643
+  },
+  {
+   "phone": "iː",
+   "rank": 7,
+   "count": 14709,
+   "per_1k": 41.979,
+   "word_final": 10246,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "s",
+   "rank": 8,
+   "count": 14023,
+   "per_1k": 40.021,
+   "word_final": 1886,
+   "word_final_by_deletion": 1886
+  },
+  {
+   "phone": "ɦ",
+   "rank": 9,
+   "count": 13906,
+   "per_1k": 39.687,
+   "word_final": 1357,
+   "word_final_by_deletion": 1357
+  },
+  {
+   "phone": "ɪ",
+   "rank": 10,
+   "count": 12981,
+   "per_1k": 37.047,
+   "word_final": 1411,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": ",",
+   "rank": 11,
+   "count": 11977,
+   "per_1k": 34.182,
+   "word_final": 11968,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "t̪",
+   "rank": 12,
+   "count": 11722,
+   "per_1k": 33.454,
+   "word_final": 2053,
+   "word_final_by_deletion": 2048
+  },
+  {
+   "phone": "m",
+   "rank": 13,
+   "count": 11044,
+   "per_1k": 31.519,
+   "word_final": 1240,
+   "word_final_by_deletion": 1234
+  },
+  {
+   "phone": "l",
+   "rank": 14,
+   "count": 8873,
+   "per_1k": 25.323,
+   "word_final": 1517,
+   "word_final_by_deletion": 1517
+  },
+  {
+   "phone": "p",
+   "rank": 15,
+   "count": 7790,
+   "per_1k": 22.232,
+   "word_final": 451,
+   "word_final_by_deletion": 451
+  },
+  {
+   "phone": "oː",
+   "rank": 16,
+   "count": 7693,
+   "per_1k": 21.955,
+   "word_final": 3060,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ʊ",
+   "rank": 17,
+   "count": 7680,
+   "per_1k": 21.918,
+   "word_final": 175,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "j",
+   "rank": 18,
+   "count": 6959,
+   "per_1k": 19.861,
+   "word_final": 853,
+   "word_final_by_deletion": 853
+  },
+  {
+   "phone": "d̪",
+   "rank": 19,
+   "count": 6297,
+   "per_1k": 17.971,
+   "word_final": 785,
+   "word_final_by_deletion": 785
+  },
+  {
+   "phone": "b",
+   "rank": 20,
+   "count": 6268,
+   "per_1k": 17.889,
+   "word_final": 836,
+   "word_final_by_deletion": 836
+  },
+  {
+   "phone": "ʋ",
+   "rank": 21,
+   "count": 5907,
+   "per_1k": 16.858,
+   "word_final": 360,
+   "word_final_by_deletion": 360
+  },
+  {
+   "phone": "ɡ",
+   "rank": 22,
+   "count": 4877,
+   "per_1k": 13.919,
+   "word_final": 574,
+   "word_final_by_deletion": 573
+  },
+  {
+   "phone": "dʒ",
+   "rank": 23,
+   "count": 4407,
+   "per_1k": 12.577,
+   "word_final": 306,
+   "word_final_by_deletion": 306
+  },
+  {
+   "phone": "ɛː",
+   "rank": 24,
+   "count": 3572,
+   "per_1k": 10.194,
+   "word_final": 712,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "eː̃",
+   "rank": 25,
+   "count": 3211,
+   "per_1k": 9.164,
+   "word_final": 2176,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "tʃ",
+   "rank": 26,
+   "count": 2906,
+   "per_1k": 8.294,
+   "word_final": 274,
+   "word_final_by_deletion": 274
+  },
+  {
+   "phone": "ʈ",
+   "rank": 27,
+   "count": 2636,
+   "per_1k": 7.523,
+   "word_final": 633,
+   "word_final_by_deletion": 632
+  },
+  {
+   "phone": "t̪ʰ",
+   "rank": 28,
+   "count": 2615,
+   "per_1k": 7.463,
+   "word_final": 296,
+   "word_final_by_deletion": 296
+  },
+  {
+   "phone": "ʃ",
+   "rank": 29,
+   "count": 2540,
+   "per_1k": 7.249,
+   "word_final": 375,
+   "word_final_by_deletion": 374
+  },
+  {
+   "phone": ".",
+   "rank": 30,
+   "count": 2331,
+   "per_1k": 6.653,
+   "word_final": 2329,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "bʱ",
+   "rank": 31,
+   "count": 2311,
+   "per_1k": 6.595,
+   "word_final": 69,
+   "word_final_by_deletion": 69
+  },
+  {
+   "phone": "uː",
+   "rank": 32,
+   "count": 2236,
+   "per_1k": 6.381,
+   "word_final": 210,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɔː",
+   "rank": 33,
+   "count": 2209,
+   "per_1k": 6.304,
+   "word_final": 74,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "oː̃",
+   "rank": 34,
+   "count": 2183,
+   "per_1k": 6.23,
+   "word_final": 1909,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "kʰ",
+   "rank": 35,
+   "count": 1933,
+   "per_1k": 5.517,
+   "word_final": 236,
+   "word_final_by_deletion": 232
+  },
+  {
+   "phone": "ɖ",
+   "rank": 36,
+   "count": 1601,
+   "per_1k": 4.569,
+   "word_final": 411,
+   "word_final_by_deletion": 411
+  },
+  {
+   "phone": "ɛː̃",
+   "rank": 37,
+   "count": 1436,
+   "per_1k": 4.098,
+   "word_final": 564,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "z",
+   "rank": 38,
+   "count": 1328,
+   "per_1k": 3.79,
+   "word_final": 254,
+   "word_final_by_deletion": 254
+  },
+  {
+   "phone": "d̪ʱ",
+   "rank": 39,
+   "count": 1277,
+   "per_1k": 3.645,
+   "word_final": 170,
+   "word_final_by_deletion": 170
+  },
+  {
+   "phone": "ɳ",
+   "rank": 40,
+   "count": 1260,
+   "per_1k": 3.596,
+   "word_final": 295,
+   "word_final_by_deletion": 295
+  },
+  {
+   "phone": "ɽ",
+   "rank": 41,
+   "count": 1156,
+   "per_1k": 3.299,
+   "word_final": 226,
+   "word_final_by_deletion": 226
+  },
+  {
+   "phone": "ŋ",
+   "rank": 42,
+   "count": 1124,
+   "per_1k": 3.208,
+   "word_final": 0,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "f",
+   "rank": 43,
+   "count": 1062,
+   "per_1k": 3.031,
+   "word_final": 210,
+   "word_final_by_deletion": 210
+  },
+  {
+   "phone": "iː̃",
+   "rank": 44,
+   "count": 1034,
+   "per_1k": 2.951,
+   "word_final": 834,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "tʃʰ",
+   "rank": 45,
+   "count": 995,
+   "per_1k": 2.84,
+   "word_final": 315,
+   "word_final_by_deletion": 315
+  },
+  {
+   "phone": "ʂ",
+   "rank": 46,
+   "count": 898,
+   "per_1k": 2.563,
+   "word_final": 101,
+   "word_final_by_deletion": 101
+  },
+  {
+   "phone": "aː̃",
+   "rank": 47,
+   "count": 834,
+   "per_1k": 2.38,
+   "word_final": 440,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ʈʰ",
+   "rank": 48,
+   "count": 566,
+   "per_1k": 1.615,
+   "word_final": 123,
+   "word_final_by_deletion": 123
+  },
+  {
+   "phone": "ɡʱ",
+   "rank": 49,
+   "count": 524,
+   "per_1k": 1.495,
+   "word_final": 10,
+   "word_final_by_deletion": 10
+  },
+  {
+   "phone": "dʒʱ",
+   "rank": 50,
+   "count": 517,
+   "per_1k": 1.475,
+   "word_final": 56,
+   "word_final_by_deletion": 56
+  },
+  {
+   "phone": "ɒ",
+   "rank": 51,
+   "count": 475,
+   "per_1k": 1.356,
+   "word_final": 2,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "pʰ",
+   "rank": 52,
+   "count": 426,
+   "per_1k": 1.216,
+   "word_final": 3,
+   "word_final_by_deletion": 3
+  },
+  {
+   "phone": "q",
+   "rank": 53,
+   "count": 375,
+   "per_1k": 1.07,
+   "word_final": 26,
+   "word_final_by_deletion": 26
+  },
+  {
+   "phone": "ɲ",
+   "rank": 54,
+   "count": 360,
+   "per_1k": 1.027,
+   "word_final": 8,
+   "word_final_by_deletion": 8
+  },
+  {
+   "phone": "ri",
+   "rank": 55,
+   "count": 323,
+   "per_1k": 0.922,
+   "word_final": 1,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɽʱ",
+   "rank": 56,
+   "count": 296,
+   "per_1k": 0.845,
+   "word_final": 62,
+   "word_final_by_deletion": 62
+  },
+  {
+   "phone": "ə̃",
+   "rank": 57,
+   "count": 292,
+   "per_1k": 0.833,
+   "word_final": 63,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "x",
+   "rank": 58,
+   "count": 277,
+   "per_1k": 0.791,
+   "word_final": 9,
+   "word_final_by_deletion": 9
+  },
+  {
+   "phone": "uː̃",
+   "rank": 59,
+   "count": 275,
+   "per_1k": 0.785,
+   "word_final": 83,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɖʱ",
+   "rank": 60,
+   "count": 202,
+   "per_1k": 0.576,
+   "word_final": 28,
+   "word_final_by_deletion": 28
+  },
+  {
+   "phone": "ɪ̃",
+   "rank": 61,
+   "count": 131,
+   "per_1k": 0.374,
+   "word_final": 3,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": " ",
+   "rank": 62,
+   "count": 125,
+   "per_1k": 0.357,
+   "word_final": 0,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ʊ̃",
+   "rank": 63,
+   "count": 118,
+   "per_1k": 0.337,
+   "word_final": 0,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɣ",
+   "rank": 64,
+   "count": 99,
+   "per_1k": 0.283,
+   "word_final": 26,
+   "word_final_by_deletion": 26
+  },
+  {
+   "phone": "h",
+   "rank": 65,
+   "count": 59,
+   "per_1k": 0.168,
+   "word_final": 22,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "?",
+   "rank": 66,
+   "count": 39,
+   "per_1k": 0.111,
+   "word_final": 39,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "!",
+   "rank": 67,
+   "count": 11,
+   "per_1k": 0.031,
+   "word_final": 11,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɔː̃",
+   "rank": 68,
+   "count": 6,
+   "per_1k": 0.017,
+   "word_final": 2,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "æ",
+   "rank": 69,
+   "count": 5,
+   "per_1k": 0.014,
+   "word_final": 2,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɒ̃",
+   "rank": 70,
+   "count": 5,
+   "per_1k": 0.014,
+   "word_final": 2,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "rĩ",
+   "rank": 71,
+   "count": 2,
+   "per_1k": 0.006,
+   "word_final": 0,
+   "word_final_by_deletion": 0
+  },
+  {
+   "phone": "ɭ",
+   "rank": 72,
+   "count": 2,
+   "per_1k": 0.006,
+   "word_final": 0,
+   "word_final_by_deletion": 0
+  }
+ ]
+}

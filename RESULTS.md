@@ -1407,3 +1407,60 @@ stack installed and failed only after a multi-second import. coqui returns
 handed over untransposed would be read as 184 mel bands; that now raises by
 name. 12 assertions on the guards and on agreement with `features.mel_params`,
 188 across the torch-free suites.
+
+## 2026-10-03 — where the phoneme arm is exposed: every word-final consonant
+
+A listening impression on r02 was that /l/ and the "gh" sounds break more than
+the rest. Measured on the 9 h Hindi training split rather than left as an
+impression: 4,793 utterances, 87,316 words, 350,391 phone tokens, 72 of the
+declared phones actually in use.
+
+    phone   rank    count   per 1k   word-final   of those, by deletion
+    l         14     8873    25.32         1517                    1517
+    ɦ          9    13906    39.69         1357                    1357
+    bʱ        31     2311     6.60           69                      69
+    d̪ʱ       39     1277     3.64          170                     170
+    dʒʱ       50      517     1.48           56                      56
+    ɡʱ        49      524     1.50           10                      10
+    ɖʱ        60      202     0.58           28                      28
+
+**The breathy-voiced series is a resource problem and nothing more exotic.**
+/ɡʱ/ at 1.50 per thousand is about 17 times rarer than /l/, and /ɖʱ/ at 0.58
+rarer again. Nine hours does not contain many of them. That is the kind of
+limitation a fixed-budget study should report rather than discover late, and it
+is a prediction for the ladder: these should degrade first as the rungs shrink.
+
+**/l/ is common, so the explanation is positional, and it is structural.** For
+every phone checked, the word-final count and the deletion-derived count are the
+same number. Devanagari writes a word-final consonant with an inherent schwa, so
+in the phonemic arm no word ends in a consonant unless the rule deletes that
+schwa. Every word-final consonant is a context the front end created. Only /ɡ/
+differs at all, by one.
+
+And the exposure is large: **27,912 of 87,316 words, 32.0%, end in a consonant
+because a final schwa was deleted.** Commonest are /r/ 6,758, /n/ 2,643,
+/k/ 2,095, /t̪/ 2,048, /s/ 1,886, /l/ 1,517, /ɦ/ 1,357, /m/ 1,234. So one Hindi
+word in three has its last phone where the rule put it. This also names the
+earlier impression precisely: कमल is /kəməl/ with the final schwa gone, so the
+/l/ that was heard to break is a deletion-derived word-final /l/, sixth most
+common of that class.
+
+**The testable prediction.** If deletion-derived position is the cause, the
+phonemic arm's errors should concentrate on word-final consonants rather than on
+those consonants generally, and the graphemic arm should not show that pattern
+because it never creates the context. That is a per-position error analysis
+against the stress-test scoring, and it needs a vocoder first.
+
+What is deliberately NOT computed: 32.0% times the 83.0% front-end agreement.
+That 83.0% came from a deliberately contested schwa set, so it does not transfer
+to ordinary corpus text, and the rule's corpus-wide error rate remains unknown.
+
+Two incidental checks while looking: /h/ at 59 tokens is the visarga from ः and
+is correctly distinct from ह as /ɦ/, not a front-end inconsistency; /ɭ/ at 2
+tokens is retroflex L from ळ in a Marathi proper noun inside Hindi text, and
+has an effectively untrained embedding, which is the outcome
+`src/train/text.py` documents as intended. 278 words keep a word-final schwa,
+none of them by deletion, which is the `min_vowels` guard declining to strip a
+monosyllable.
+
+`scripts/phone_stats.py` produces this for any language and rung.
