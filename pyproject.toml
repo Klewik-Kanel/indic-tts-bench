@@ -1,0 +1,42 @@
+# Packaging exists for one reason: the demo Space installs this project from
+# git at a pinned commit, so the Space runs the exact code that trained the
+# weights rather than a copy that can drift. Nothing else in the project needs
+# installing; the DGX runs it from the working tree.
+#
+# The import package is `src`, which is not a name anyone would choose for a
+# distribution. It is not renamed here because every module in the repository
+# imports through it and a rename mid-dissertation would touch the training
+# loop, the adapters and every test for no benefit to the result. The
+# distribution name is the real one.
+#
+# Runtime dependencies are deliberately almost empty. torch and coqui-tts are
+# environment-specific and heavy, and the Space pins exact versions matching
+# the DGX venv in its own requirements.txt. Declaring loose versions here as
+# well would give pip two sources of truth to reconcile during a Space build.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indic-tts-bench"
+version = "0.3.0"
+description = "Benchmarking neural TTS architectures for Hindi and Marathi"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+# What src.export.synthesize needs on top of the base, for a CPU demo host.
+# Versions are pinned by the consumer, not here.
+inference = ["torch", "coqui-tts", "soundfile", "librosa"]
+
+[tool.setuptools]
+packages = [
+  "src",
+  "src.analysis",
+  "src.data",
+  "src.eval",
+  "src.export",
+  "src.g2p",
+  "src.kaggle",
+  "src.train",
+]

@@ -34,3 +34,6 @@ __pycache__/
 .DS_Store
 logs/*.log
 jobs/*/output/
+
+# bundles are reproducible from runs/ and live on the Hub
+exports/
