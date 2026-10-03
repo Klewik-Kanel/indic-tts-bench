@@ -350,6 +350,25 @@ def plan_runs() -> list[RunConfig]:
     #                       input_repr="phoneme", data="9h", vocoder="hifigan_hindi",
     #                       init_from="matcha_ljspeech", deviations=MATCHA_DEVIATIONS))
 
+    # Seed variance floor. r01's cell again, changing only the seed, so the
+    # spread across r01, r20 and r21 is the smallest difference this setup can
+    # resolve. Plan v3's standing rule says no difference between two runs is
+    # reportable until that number exists, and without it the whole results
+    # table is a set of single samples with no scale against them. r01's cell
+    # because that is where the central phonemic-versus-graphemic claim lives,
+    # and FastSpeech 2 because it is the cheaper of the two architectures and
+    # carries eight of the runs.
+    #
+    # Nothing else may differ. seed is inside config_hash, so these get their
+    # own hashes while every other field stays byte-identical to r01's, which
+    # is what makes the comparison a measurement of luck rather than of
+    # anything else.
+    for rid, seed in (("r20", 1), ("r21", 2)):
+        runs.append(RunConfig(run_id=rid, architecture="fastspeech2",
+                              language="hindi", input_repr="phoneme", data="9h",
+                              seed=seed, vocoder="hifigan_hindi",
+                              notes=f"seed variance floor: r01's cell at seed {seed}"))
+
     # Hindi ablation: the same two architectures on raw graphemes
     runs.append(RunConfig(run_id="r04", architecture="fastspeech2", language="hindi",
                           input_repr="grapheme", data="9h", vocoder="hifigan_hindi",

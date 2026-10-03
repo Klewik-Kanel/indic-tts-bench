@@ -49,6 +49,7 @@ OFFLOAD=${OFFLOAD:-1}                      # back up after each pair
 PAIRS=(
   "r02 r05"      # Hindi VITS: done at 100k, pending a decision on re-running
   "r06 r17"      # the two vocoders, fine-tuned on our own mels
+  "r20 r21"      # seed variance floor: r01's cell at seeds 1 and 2
   "r15 r18"      # Marathi FastSpeech 2: the control's two arms
   "r16 r19"      # Marathi VITS: the control's two arms
   "r11 r12"      # VITS ladder, 5 h and 1 h

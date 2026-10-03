@@ -1597,3 +1597,41 @@ pair cannot launch on an unsettled configuration.
 14 assertions on the corrections mechanism, including that adding one cannot
 move a hash while editing a deviation can, and that no non-VITS run carries one.
 202 across the torch-free suites.
+
+## 2026-10-03 — the seed variance floor is queued, as r20 and r21
+
+Plan v3's standing rule says no difference between two runs is reportable until
+the variance floor exists. It still did not, with about 60 GPU-h spent and 90
+planned on eighteen runs whose differences nobody could interpret. Every run
+used seed 0, so every number in the results table is a single sample with no
+scale against it.
+
+r20 and r21 are r01's cell at seeds 1 and 2: FastSpeech 2, Hindi, phonemic, 9 h.
+The spread across r01, r20 and r21 is then the smallest difference this setup
+can resolve, because nothing else about the three runs differs. Verified rather
+than asserted: the only hash-bearing field that differs is `seed`, with
+`run_id` and `notes` cosmetic and outside the hash, and all three hashes differ
+while every budget field is identical. All 20 configs regenerated, and every
+pre-existing hash is unchanged, r01's `e3bbebc98825` included.
+
+r01's cell because that is where the central phonemic-versus-graphemic claim
+lives, and FastSpeech 2 because it is the cheaper architecture and carries eight
+of the runs. 4.2 h for the pair on a free card at the rate r15 measured.
+
+**What the number will mean, in both directions.** If the floor is small against
+the phonemic-versus-graphemic gap, it licenses every other comparison in the
+dissertation, which is what four hours is being spent on. If it is comparable to
+the gap, the headline claim weakens and has to be stated with that spread
+attached — and "at nine hours and this budget, seed variance is of the same
+order as the input-representation effect" is then a finding in its own right,
+and an uncomfortable one for a literature in which single-seed TTS comparisons
+are common. Either way the floor is already inside the results; measuring it
+only decides whether that is known.
+
+The timing is what makes a wide floor survivable. With 90 GPU-h still unspent
+the response can be more seeds per cell and intervals rather than point
+estimates. Found after the write-up, there is no response.
+
+Queued behind the vocoders and ahead of the ladder, which matters: if the floor
+is wide, the smallest ladder rungs are where it is widest and the claims
+thinnest, so the result should be known before 30 GPU-h goes into them.
