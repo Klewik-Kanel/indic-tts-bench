@@ -27,6 +27,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Converts NATURAL-log cepstral coefficients to decibels. The coefficients
+# therefore have to come from a natural log, which is why mel_cepstrum does its
+# own DCT instead of calling librosa.feature.mfcc: that applies power_to_db,
+# which is 10*log10, so the conversion would happen twice. Measured on 3 Oct,
+# the double conversion inflated MCD by 3.71x on a Griffin-Lim reconstruction
+# and 4.19x between unrelated recordings, against the 4.34x predicted.
 MCD_CONSTANT = 10.0 * np.sqrt(2.0) / np.log(10.0)   # ~= 6.14185
 
 
@@ -53,18 +59,19 @@ def mel_cepstrum(
     common setting for 22.05 kHz TTS evaluation.
     """
     import librosa
+    import scipy.fftpack
 
     if wav.ndim > 1:
         wav = np.mean(wav, axis=0)
-    mfcc = librosa.feature.mfcc(
-        y=wav.astype(np.float64),
-        sr=sr,
-        n_mfcc=n_mfcc,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        n_mels=n_mels,
-    )
-    return mfcc.T
+    spec = np.abs(librosa.stft(wav.astype(np.float64), n_fft=n_fft,
+                               hop_length=hop_length, win_length=n_fft))
+    fb = librosa.filters.mel(sr=sr, n_fft=n_fft, n_mels=n_mels,
+                             fmin=0, fmax=sr // 2)
+    # Natural log, not power_to_db. MCD_CONSTANT already carries the dB
+    # conversion; librosa.feature.mfcc would apply it a second time.
+    log_mel = np.log(np.maximum(fb @ (spec ** 2), 1e-10))
+    cep = scipy.fftpack.dct(log_mel, axis=0, type=2, norm="ortho")[:n_mfcc]
+    return cep.T
 
 
 def dtw_path(ref: np.ndarray, syn: np.ndarray) -> list[tuple[int, int]]:

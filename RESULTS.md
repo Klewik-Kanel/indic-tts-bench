@@ -1678,3 +1678,59 @@ Eight runs reaching 100,000 steps is far stronger evidence that every
 architecture works than a 500-step job would be, and the queue already dry-runs
 two steps before each pair. Performing it now would tick a box and tell us
 nothing.
+
+## 2026-10-03 — MCD was 34x too large, and it cannot resolve this comparison anyway
+
+The harness's first run reported MCD 275.103 for r02 and 279.089 for r05.
+Published TTS figures run 3 to 8 dB. Two separate problems came out of chasing
+that, and the second matters more than the first.
+
+**The bug.** `mel_cepstrum` called `librosa.feature.mfcc`, which applies
+`power_to_db`, that is `10*log10`. `MCD_CONSTANT = 10*sqrt(2)/ln(10)` exists to
+convert NATURAL-log cepstral coefficients into decibels, so the conversion was
+happening twice. Predicted inflation 4.34x; measured 3.71x on a Griffin-Lim
+reconstruction and 4.19x between unrelated recordings. `mel_cepstrum` now takes
+its own DCT of `log(mel_power)` so the coefficients match the constant by
+construction.
+
+Every existing MCD test passed throughout, because all of them checked relative
+behaviour — zero against itself, larger for more different spectra — and none
+checked magnitude. Five tests added, including a plausible-range assertion and
+a source check that `librosa.feature.mfcc` is not used.
+
+**The scale, measured rather than assumed.** An MCD figure alone is
+uninterpretable, so the baselines were established on real corpus audio:
+
+    current formula          fixed
+       0.000                 0.000    identical signal
+      70.744                19.082    a severe but faithful reconstruction
+                                      (Griffin-Lim of the real mel)
+     275.103                   --     r02
+     279.089                   --     r05
+     447.1                 106.7      CHANCE: two unrelated real recordings
+
+**The finding that matters.** r02 and r05 sit 54.3% and 55.4% of the way from
+a faithful reconstruction to completely unrelated audio. The gap between them
+is 3.986, which is 0.89% of the chance level and 0.31 standard errors on 25
+utterances. Rescaling by the bug factor preserves every one of those ratios
+exactly.
+
+So MCD cannot resolve the phonemic-versus-graphemic contrast at this quality
+level. When both systems are this far from the reference, the measure is
+dominated by how far they both are, and the difference between them disappears
+into it. The full 300-utterance test split reduces the standard error by a
+factor of 3.5, which is not enough to rescue a 0.31-sigma gap.
+
+**What follows for the evaluation plan.** The acoustic-distance metrics will
+describe how bad both systems are, accurately, and will not answer the
+dissertation's question. The metrics that can are the ones that measure the
+phenomenon rather than the distance: stress-test error rates per architecture,
+and the per-position analysis splitting deletion-derived word-final consonants
+from the rest, where 32.0% of Hindi words sit. Those do not saturate, because a
+schwa is either deleted or it is not.
+
+`scripts/evaluate.py` now computes the chance level for every run by rotating
+the reference by one utterance, so each synthesis is scored against a recording
+of different words by the same speaker through the same alignment. The table
+prints it and the percentage of it. No MCD figure leaves this project without
+the number it should be read against.

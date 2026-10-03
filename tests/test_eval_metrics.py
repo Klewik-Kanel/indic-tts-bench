@@ -14,6 +14,8 @@ import pytest
 from src.eval.f0 import compare, extract_f0
 from src.eval.mcd import MCD_CONSTANT, dtw_path, mcd, mel_cepstrum
 
+from src.eval import mcd as mcd_mod
+
 SR = 22050
 
 
@@ -165,3 +167,65 @@ def test_no_common_voiced_frames_yields_nan_not_zero() -> None:
     r = compare(np.full(n, 200.0), ref_v, np.full(n, 200.0), syn_v)
     assert np.isnan(r.log_f0_rmse)
     assert r.n_common_voiced == 0
+
+
+# -- scale, which is what went wrong on 3 October ---------------------------
+#
+# MCD came out at 275 dB on r02. Published TTS figures are 3 to 8, and the
+# cause was a double decibel conversion: librosa.feature.mfcc applies
+# power_to_db, and MCD_CONSTANT converts natural-log coefficients to decibels
+# again. Every test here passed throughout, because they all check relative
+# behaviour and none checked magnitude. These do.
+
+def _tone(sr, seconds, f0, harmonics=1, noise=0.0, seed=0):
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    t = np.linspace(0, seconds, int(sr * seconds), endpoint=False)
+    y = sum(np.sin(2 * np.pi * f0 * k * t) / k for k in range(1, harmonics + 1))
+    if noise:
+        y = y + noise * rng.standard_normal(len(t))
+    return (0.5 * y / np.max(np.abs(y))).astype("float32")
+
+
+def test_mel_cepstrum_does_not_use_librosas_db_scaled_mfcc():
+    """The specific regression. librosa.feature.mfcc applies power_to_db, so
+    using it means MCD_CONSTANT converts to decibels a second time."""
+    import pathlib
+    src = pathlib.Path(mcd_mod.__file__).read_text(encoding="utf-8")
+    assert "librosa.feature.mfcc" not in src
+    assert "np.log(" in src          # natural log, matching the constant
+
+
+def test_mcd_orders_a_mild_degradation_below_an_unrelated_signal():
+    """The ordering MCD exists to provide. A units error preserves it, which
+    is why the magnitude assertions below are needed as well."""
+    sr = 22050
+    clean = _tone(sr, 0.6, 180.0, harmonics=6)
+    mild = _tone(sr, 0.6, 180.0, harmonics=6, noise=0.02, seed=1)
+    unrelated = _tone(sr, 0.6, 320.0, harmonics=3, seed=2)
+    near = mcd_mod.mcd(clean, mild, sr).mcd_db
+    far = mcd_mod.mcd(clean, unrelated, sr).mcd_db
+    assert 0.0 < near < far
+
+
+def test_an_identical_signal_scores_zero():
+    sr = 22050
+    y = _tone(sr, 0.5, 200.0, harmonics=4)
+    assert mcd_mod.mcd(y, y, sr).mcd_db == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_mild_degradation_stays_within_a_plausible_decibel_range():
+    """The magnitude check. With the double conversion this came out about
+    4.3x too large, which is the whole bug. A mild additive-noise degradation
+    should be single or low double digits, nowhere near three figures."""
+    sr = 22050
+    clean = _tone(sr, 0.6, 180.0, harmonics=6)
+    mild = _tone(sr, 0.6, 180.0, harmonics=6, noise=0.02, seed=1)
+    got = mcd_mod.mcd(clean, mild, sr).mcd_db
+    assert 0.0 < got < 60.0, got
+
+
+def test_the_constant_is_the_natural_log_to_decibel_conversion():
+    import numpy as np
+    assert mcd_mod.MCD_CONSTANT == pytest.approx(
+        10.0 * np.sqrt(2.0) / np.log(10.0))
