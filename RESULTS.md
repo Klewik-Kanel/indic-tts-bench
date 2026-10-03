@@ -1787,3 +1787,69 @@ and the other must work it out, and the regression asks which happened.
 
 12 assertions on the fit, 10 on the harness bookkeeping, 316 across the
 torch-free suites.
+
+## The 5 h to 1 h loss cliff, resolved: the logged loss is a pitch error
+
+r07 at the 5 h rung ends on 299.85. r08 at the 1 h rung ends on 10.04, a factor
+of 29.9 lower on nine times less data. An overfitting curve does not have a
+cliff in it, so the ladder could not be plotted against training loss until
+this number was explained.
+
+It is not a cliff, and it is not a quality difference. coqui's `ForwardTTSLoss`
+is a sum of five terms, and the two largest are mean squared errors in physical
+units: f0 in hertz and the L2 norm of each linear spectrogram frame, both at
+`alpha = 0.1`. Neither is normalised anywhere. `features.compute` produces f0
+in hertz with 0 for unvoiced frames, and energy as `np.linalg.norm(spec)`;
+coqui's own dataset pipeline would z-score both, and this project bypasses that
+pipeline.
+
+Measured on 12 utterances of the 1 h rung and 12 that are in the 9 h rung but
+not the 1 h one, 22.05 kHz, through `src/train/features.py` itself:
+
+    term                             1 h rung    9 h only
+    1.0 * mel L1 vs mean predictor      1.814       1.972
+    0.1 * var(f0 in Hz)               569.131     653.995
+    0.1 * var(frame energy)            45.381      45.647
+    sum                               616.326     701.614
+
+    f0:      mean  98.0 Hz, sd 75.4     mean 100.8 Hz, sd 80.9, 15.2% unvoiced
+    energy:  mean  25.7,    sd 21.3     mean  24.1,    sd 21.4
+
+A mean predictor therefore scores about 617 to 702. r01 at 314.60 implies an f0
+RMS error of 51.7 Hz against a speaker standard deviation of 80.9 Hz, so the
+pitch predictor has recovered about a third of the variance. r08 at 10.04
+implies 10.0 Hz.
+
+**The rungs are nested subsets of one speaker**, so the units are identical at
+every rung and the loss is comparable in that narrow sense. What differs is the
+number of passes. At `batch_frames = 12000`, `hop = 256` and 22.05 kHz, a step
+consumes 139.319728 s of audio, so `max_steps = 100000` gives:
+
+    rung     steps/epoch    epochs
+    9h          232.56        430
+    5h          129.20        774
+    1h           25.84       3870
+    30min        12.92       7740
+    10min         4.31      23220
+
+541 utterances seen 3870 times have their f0 memorised. That is the whole 29.9.
+
+**The consequence for the plots.** The mel term is the only one that measures
+spectral quality, and it is 0.6 per cent of r01's logged loss and 18 per cent of
+r08's. The same number does not mean the same thing at two rungs, so the ladder
+is plotted against held-out metrics on `test.tsv` (MCD with its chance level,
+F0 RMSE, and the duration-bias slope), never against training loss. Loss curves
+appear only in an appendix, with this breakdown beside them.
+
+**The consequence for FastSpeech 2.** The mel decoder is being optimised against
+0.6 per cent of the gradient signal while an unnormalised pitch head takes most
+of the rest. That is a sufficient explanation for r01 producing noise, and it is
+a property of the objective, not of the data or the architecture. Normalising
+pitch and energy would change the config hash of every FastSpeech 2 run: r01,
+r04, r07, r08, r09, r10, r15, r18, r20, r21. Ten runs. That decision is open and
+is recorded here rather than taken quietly.
+
+The objective was not changed mid-matrix. Instead `_record` on `AdapterBase`
+keeps the scalar terms of each step's loss dict and the step record carries them
+under `components`, so every run from r09 onward can be read directly instead of
+reconstructed from a filter bank. 10 assertions on it.
