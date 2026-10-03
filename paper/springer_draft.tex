@@ -73,15 +73,19 @@ rule-predicted deletion sites, giving milliseconds of excess per site, which
 needs no vocoder and cannot saturate. The other partitions character error
 rate from two independent connectionist temporal classification recognisers by
 whether the reference word carries a rule-predicted deletion, and reports it
-against the recogniser's own error rate on the real recordings. On the first
-ten test utterances, both recognisers agree that errors concentrate at
-\emph{medial} deletion sites for the graphemic arm and not for the phonemic
-arm, by 0.1147 and 0.1150 after floor correction, while at word-final sites
-the graphemic arm is marginally better. That split is what one would predict:
-final deletion is inferable from the orthography, medial deletion is not.
-Second, I document two measurement defects that silently invert conclusions,
-one in the training objective and one in the evaluation text pipeline, and
-give the diagnostic that exposes each.
+against the recogniser's own error rate on the real recordings. Across ten
+test utterances the graphemic arm is the less intelligible of the two on both
+recognisers, and no site-partitioned effect survives scrutiny at that sample
+size, for a reason given below.
+
+Second, I document three measurement defects, each of which produced a
+plausible answer that was wrong, and give the diagnostic that exposes each:
+a training objective whose dominant terms are mean squared errors in physical
+units, so its loss is not comparable across data scales even on nested
+subsets; punctuated references that make a site-partitioned error rate
+partition partly on the punctuation; and an unseeded sampling decoder, which
+made two runs of one command disagree about the sign of the headline
+contrast.
 
 \keywords{Text-to-speech \and Grapheme-to-phoneme \and Hindi \and Schwa
 deletion \and Evaluation methodology \and Low-resource speech}
@@ -353,9 +357,16 @@ to be inferred: 327 reference characters in 82 word tokens carry a word-final
 site, 96 characters in 21 tokens carry a medial site, and 389 characters in 124
 tokens carry neither, for 812 characters in total.
 
+\textbf{These are one synthesis draw.} Section \ref{sec:seed} explains why
+that matters and what it cost. Nothing in the site-partitioned columns of this
+table is reportable; the table is kept because its floor rows, its
+denominators and the overall ordering are, and because the contrast between it
+and a second identical run is the evidence for Section \ref{sec:seed}.
+
 \begin{table}[t]
 \centering
-\caption{Character error rate, pooled, on the first ten Hindi test utterances.
+\caption{Character error rate, pooled, on the first ten Hindi test utterances,
+from a SINGLE unseeded synthesis draw; see Section \ref{sec:seed}.
 \textsc{gt} is the recogniser's own rate on the real recordings. Classes are
 by whether the reference word carries a rule-predicted deletion site. Excess is
 the site class minus the no-site class. Counts in parentheses are edits over
@@ -384,70 +395,43 @@ MMS-1B-all     & \textsc{gt} & 0.0333 & 0.1346 & 0.0521 & 0.0540 \\
 
 Three things in that table are worth separating.
 
-\textbf{The direction of the overall rate agrees across recognisers.} The
-graphemic arm is worse by 0.0283 on both, which is 23 additional edits out of
-812 in each case. The identical figure is a coincidence of small integers and
-would not be expected to recur at larger $n$; the underlying counts differ
-everywhere else.
+\textbf{The direction of the overall rate agrees across recognisers, and it is
+the one result that reproduced.} The graphemic arm is the worse of the two in
+all four cells, by 0.0283 on both recognisers here and by 0.0197 and 0.0566 on
+a second, independent synthesis draw. No sign change, four cells out of four,
+two instruments.
 
-\textbf{The site-specific effect is medial, not final.} Table
-\ref{tab:excess} subtracts the floor from each arm's excess. At medial sites
-the phonemic arm's errors avoid those words and the graphemic arm's
-concentrate on them, by 0.1147 and 0.1150 for the two recognisers. At
-word-final sites the graphemic arm is marginally the better of the two, by
-$-0.0347$ and $-0.0351$. Two recognisers of different architecture, trained on
-different data, agree on both figures to within $4 \times 10^{-4}$.
+\textbf{The site-partitioned columns did not reproduce.} On this draw, both
+recognisers put the graphemic arm's excess error at medial sites and not at
+final ones, agreeing to within $4 \times 10^{-4}$ after floor correction. On a
+second draw of the same ten utterances, with the same code and the same
+weights, one of them reversed sign. Section \ref{sec:seed} gives the figures.
+The agreement was a property of one draw.
 
-\begin{table}[t]
-\centering
-\caption{Excess character error rate at deletion sites, relative to words with
-no site, after subtracting the recogniser's own excess on the real recordings.
-Positive means errors concentrate where the rule fires.}
-\label{tab:excess}
-\begin{tabular}{llrrr}
-\toprule
-Site & Recogniser & Phonemic & Graphemic & Difference \\
-\midrule
-Final  & IndicConformer & $+0.0976$ & $+0.0629$ & $-0.0347$ \\
-       & MMS-1B-all     & $+0.1458$ & $+0.1107$ & $-0.0351$ \\
-Medial & IndicConformer & $-0.0484$ & $+0.0663$ & $+0.1147$ \\
-       & MMS-1B-all     & $-0.0055$ & $+0.1095$ & $+0.1150$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+\textbf{The nuisance variable is real and sits in the final class.} This part
+does not depend on the draw, because the floor is computed from the recordings
+rather than from synthesis. On real studio audio both recognisers err
+substantially more per character on word-final-site words than on words with
+no site, 34/327 against 16/389 and 44/327 against 21/389. Those words are
+longer, rarer and carry more consonant clusters, so an apparent concentration
+of errors at final sites is partly a property of which words carry final
+sites. The floor's medial excess is $-0.0307$ and $-0.0019$, which is to say
+nothing. Any site-partitioned claim has to be read against these, and the
+floor is reproducible where the synthesis numbers are not.
 
-That split is what the phonology predicts. Word-final schwa deletion in Hindi
-is close to categorical and is inferable from the orthography alone, since a
-word-final consonant simply does not carry its inherent vowel; a model trained
-on characters can learn it as a statistical regularity of the script. Medial
-deletion depends on syllable weight and morphology, which the graphemes
-underdetermine. An explicit front end should pay where the orthography stops
-being sufficient, and on this evidence that is where it pays.
-
-\textbf{The nuisance variable sits in the other class.} On the real
-recordings both recognisers err substantially more per character on
-word-final-site words than on words with no site: 34/327 against 16/389, and
-44/327 against 21/389. Those words are longer, rarer and carry more consonant
-clusters, so part of the apparent final-site concentration has nothing to do
-with synthesis. The floor's \emph{medial} excess, by contrast, is $-0.0307$ and
-$-0.0019$, which is to say nothing. The confound is concentrated in the class
-where the effect is absent and absent from the class where the effect is
-found.
-
-\textbf{What this is not.} The medial class is 96 characters in 21 word
-tokens, and the counts behind the headline ratio are 16 edits against 4 for
-IndicConformer and 36 against 21 for MMS. A single utterance could be carrying
-most of it. No confidence interval is computable from one sample of ten
-utterances, and none is claimed. The result is reported here because the
-agreement between two independent recognisers is itself informative, and
-because the measure's behaviour is worth describing before the full split is
-scored.
+\textbf{What the sample supports.} The medial class is 96 characters in 21
+word tokens. The counts behind the headline ratio on this draw were 16 edits
+against 4 for IndicConformer; on the next draw they were 5 against 8. A
+paired bootstrap over utterances does not put either interval clear of zero,
+and a test in the repository asserts that it must not. Ten utterances of a
+sampling model, scored once, support the overall ordering and nothing finer.
 
 \section{Two Measurement Defects}
 
-Both of the following produced a plausible number that was wrong in a
+Each of the following produced a plausible number that was wrong in a
 direction that mattered. I give each with the diagnostic that exposed it,
-because neither would have been caught by a test of the code's correctness.
+because none would have been caught by a test of the code's correctness: in
+every case the code did what it was written to do.
 
 \subsection{A Training Loss That Is Mostly a Pitch Error}
 \label{sec:loss}
@@ -541,6 +525,59 @@ Devanagari study is about. And derive the class partition and the error rate
 from one shared normalisation, since two copies of that chain are two
 conventions.
 
+\subsection{An Unseeded Sampling Decoder}
+\label{sec:seed}
+
+VITS samples. Its stochastic duration predictor and its flow both draw noise
+at inference, so two calls on the same text produce two different utterances.
+My synthesis path called the model's inference method with no seed.
+
+The cost was not a loss of precision. It was a reversed conclusion. Two runs
+of the scoring harness, with identical arguments, identical code, identical
+weights and the same ten utterances, gave Table \ref{tab:draws}.
+
+\begin{table}[t]
+\centering
+\caption{Two runs of one command, one hour apart, on the same ten utterances.
+Excess is grapheme minus phoneme after floor correction. The ground-truth
+floor was byte-identical across both passes, because it is computed from the
+recordings.}
+\label{tab:draws}
+\begin{tabular}{llrr}
+\toprule
+Quantity & Recogniser & First draw & Second draw \\
+\midrule
+Corpus CER difference & IndicConformer & $+0.0283$ & $+0.0197$ \\
+                      & MMS-1B-all     & $+0.0283$ & $+0.0566$ \\
+Medial-site excess    & IndicConformer & $+0.1147$ & $-0.0569$ \\
+                      & MMS-1B-all     & $+0.1150$ & $+0.0661$ \\
+Final-site excess     & IndicConformer & $-0.0347$ & $+0.0386$ \\
+                      & MMS-1B-all     & $-0.0351$ & $-0.1133$ \\
+\midrule
+r05 medial edits of 96 & IndicConformer & 16 & 5 \\
+                       & MMS-1B-all     & 36 & 32 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The medial-site effect, which two independent recognisers had agreed on to
+within $4 \times 10^{-4}$ and which I had taken as the strongest evidence
+available, reverses sign on one of them. The final-site effect reverses on the
+other. The overall ordering is the only quantity that survives, and it
+survives in all four cells. So the two tables were never two measurements that
+disagreed; they were two draws from a distribution nobody had examined, and the
+agreement within each was an artefact of drawing once.
+
+Three things follow for anyone measuring a sampling synthesiser. Seed the
+draw, and derive the seed from the run, the text and a draw index rather than
+from a global generator, so that an utterance's audio does not depend on how
+many utterances were synthesised before it and scoring a subset reproduces the
+audio of the full set. Do not take one seeded draw for the system: report
+several and give the spread, which is the inference-side counterpart of a
+seed-variance floor. And note that agreement between two independent
+instruments is not evidence of a stable effect when both are reading the same
+single sample, which is the inference I drew and should not have.
+
 \section{Threats to Validity}
 
 \textbf{One speaker per language.} Every result is within-speaker. Nothing here
@@ -560,8 +597,13 @@ corrected.
 priors, and the floor reported with every rate is the available defence rather
 than a complete one. A listening test is planned and not yet run.
 
+\textbf{Synthesis variance is now seeded but not yet characterised.} Section
+\ref{sec:seed} closes the reproducibility hole. How wide the distribution over
+draws actually is, for either arm, is a number this paper does not yet have,
+and it bounds every intelligibility claim in it.
+
 \textbf{The seed floor is not yet measured.} Until it is, the gaps in Tables
-\ref{tab:intel} and \ref{tab:excess} have no scale against them. This is the
+\ref{tab:intel} have no scale against them. This is the
 single largest gap in the present evidence and the reason none of these
 numbers is offered as a finding.
 
@@ -583,18 +625,19 @@ budget affords, at 0.31 standard deviations, so I report two measures that
 can: milliseconds of excess duration per rule-predicted deletion site, which
 needs no vocoder and cannot saturate, and a site-partitioned character error
 rate from two independent CTC recognisers, floor-corrected against their own
-error on the real recordings. On ten utterances both recognisers agree that
-the graphemic arm's errors concentrate at medial deletion sites and not at
-final ones, which is the asymmetry the phonology predicts, and which no global
-error rate would have shown.
+error on the real recordings. On ten utterances the graphemic arm is the less
+intelligible of the two under both recognisers, and that ordering is the only
+part which reproduced across synthesis draws.
 
-The two defects of Section \ref{sec:loss} and Section \ref{sec:punct} are
-offered as the more portable contribution. A training loss whose dominant
-terms are in physical units is not comparable across data scales even when the
-data is nested, and a site-partitioned error rate computed on punctuated
-references partitions on the punctuation. Each produced a confident wrong
-answer, and in the second case the wrong answer was the one the hypothesis
-predicted.
+The three defects of Sections \ref{sec:loss}, \ref{sec:punct} and
+\ref{sec:seed} are offered as the more portable contribution. A training loss
+whose dominant terms are in physical units is not comparable across data
+scales even when the data is nested. A site-partitioned error rate computed on
+punctuated references partitions partly on the punctuation. And an unseeded
+sampling decoder turns a measurement into a draw. Each produced a confident
+wrong answer; in the second case the wrong answer was the one the hypothesis
+predicted, and in the third it was corroborated by a second instrument that
+was reading the same single sample.
 
 What remains is the twelve outstanding runs, the seed-variance floor that
 gives every gap its scale, the full test split in place of ten utterances with
