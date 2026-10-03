@@ -1545,3 +1545,55 @@ conclude the model is broken when what they are hearing is the inversion method
 meeting a smoothed mel. `src/export/griffinlim.py` stays, having earned its
 place on the ground-truth path and as a debugging tool, but `--griffin-lim` is
 not passed when rendering the page. Phase 7 task 9 waits for r06.
+
+## 2026-10-03 — VITS stays as it is, and the false claim is corrected rather than rewritten
+
+Decided: no MMS warm start, no extra steps, no change of sample rate, and r02
+and r05 keep their trained weights. A warm start would import training compute
+the fixed budget does not count, and extra steps for one architecture would end
+the symmetry outright. The equal-compute claim is the study's main
+methodological asset and is worth more than better audio. The artefacts stay and
+are reported; the material for that is already here, in the phone frequencies,
+the over-smoothing measurement and the step-50,000 convergence.
+
+Marathi keeps its own vocoder. r17 stays paired with r06 on the original
+argument: the speaker differs by language, so a Hindi-fitted vocoder used on
+Marathi audio would put a speaker mismatch inside the control that exists to
+isolate language.
+
+**The provenance problem that follows, and how it is handled.**
+`configs/r02.yaml` declares `init_from: facebook/mms-tts-hin` and a deviation
+saying the 16 kHz rate is "inherited from the MMS checkpoint". Both are false,
+and `deviations` and `init_from` are both inside `config_hash`. Correcting
+either in place would change the hash of eight VITS runs, two of which have
+finished, orphaning r02's checkpoint and its export bundle from their own
+provenance record. Rewriting the declaration would also hide that a false claim
+was ever made, which is the opposite of what a deviations table is for.
+
+So a `corrections` field was added to `RunConfig`, placed in `COSMETIC` and
+therefore outside the hash, emitted into the YAML beside the original claim. The
+hash now records what was declared and trained; the record says what was later
+found untrue and when. All eight VITS runs carry three corrections: that no warm
+start was ever implemented and every VITS run trained from random
+initialisation; that the 16 kHz rate is consequently unmotivated rather than
+inherited, and leaves the VITS runs with a narrower band and 192.00 s of audio
+per step against 139.32 s at an identical 12,000-frame budget, which any
+FastSpeech 2 against VITS comparison inherits; and that a warm start was
+considered and declined, with the reason.
+
+Verified rather than assumed: all 18 configs regenerated and every one of the 18
+hashes is byte-identical to what was on disk before, including r02's
+`d3873342a10d`, which is the hash its trained checkpoint and its export bundle
+both carry. `runner.load_config` reads the new list without tripping the string
+hardening that turned r08's hash into `inf` on 2 October.
+
+**The vocoders are now next in the queue.** They were last while they were an
+upper bound on 10 GPU-h each with nothing depending on them; neither half of
+that holds any more, since the FastSpeech 2 arms are mute without one and their
+mels need a learned prior, and they stop on a plateau criterion rather than
+spending a budget. Moving them ahead of the Marathi VITS pair also means that
+pair cannot launch on an unsettled configuration.
+
+14 assertions on the corrections mechanism, including that adding one cannot
+move a hash while editing a deviation can, and that no non-VITS run carries one.
+202 across the torch-free suites.

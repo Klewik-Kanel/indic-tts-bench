@@ -20,4 +20,5 @@ merge_nukta: false
 aligner: internal_mas
 vocoder: ''
 deviations: []
+corrections: []
 notes: fine-tuned on ground-truth mels; shared by r01 and r03

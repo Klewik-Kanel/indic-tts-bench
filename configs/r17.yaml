@@ -20,4 +20,5 @@ merge_nukta: false
 aligner: internal_mas
 vocoder: ''
 deviations: []
+corrections: []
 notes: shared by r15

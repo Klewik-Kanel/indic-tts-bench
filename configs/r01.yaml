@@ -20,4 +20,5 @@ merge_nukta: false
 aligner: internal_mas
 vocoder: hifigan_hindi
 deviations: []
+corrections: []
 notes: durations learned internally; see ALIGNER_NOTE

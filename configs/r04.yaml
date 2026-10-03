@@ -20,4 +20,5 @@ merge_nukta: false
 aligner: internal_mas
 vocoder: hifigan_hindi
 deviations: []
+corrections: []
 notes: the ablation arm; differs from r01 only in input

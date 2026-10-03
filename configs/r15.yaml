@@ -20,4 +20,5 @@ merge_nukta: false
 aligner: internal_mas
 vocoder: hifigan_marathi
 deviations: []
+corrections: []
 notes: 'control arm: identical settings, schwa deletion off'

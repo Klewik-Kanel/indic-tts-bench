@@ -22,6 +22,16 @@ undeclared architectural difference is a bug.
 **The hash covers what matters.** It is computed over every field that changes
 the trained model, and deliberately not over cosmetic ones like `notes`, so an
 edit to a comment does not invalidate a completed run.
+
+**A declared deviation that turns out to be false is corrected, not rewritten.**
+`deviations` and `init_from` are inside the hash, so editing them would change
+`config_hash` for runs that have already trained and orphan their checkpoints
+from their own provenance. `corrections` exists for this: it is outside the
+hash, it is emitted into the deviations table beside the original claim, and it
+says what was found and when. The hash then records what was declared and
+trained, while the record says what was later found to be untrue. Rewriting the
+declaration would hide that a false claim was ever made, which is the opposite
+of what the table is for.
 """
 
 from __future__ import annotations
@@ -61,7 +71,10 @@ BUDGET = {
 # With run_id inside the hash, a duplicated run looks like a distinct one,
 # which is exactly how the ladder's top rung silently became a second copy of
 # the main run and would have cost GPU hours twice.
-COSMETIC = {"notes", "created", "run_id"}
+# Out of the hash. "corrections" joins them because a correction describes a
+# finding ABOUT a finished run, not a parameter OF it: adding one must not
+# invalidate weights that are already trained.
+COSMETIC = {"notes", "created", "run_id", "corrections"}
 
 # The checkpoint r06 and r17 warm-start from, once one is on the machine. It
 # lives here rather than being edited into configs/r06.yaml by hand, because
@@ -92,6 +105,9 @@ class RunConfig:
     aligner: str = "internal_mas"   # see ALIGNER_NOTE below
     vocoder: str = ""               # "" for end-to-end architectures
     deviations: tuple[str, ...] = ()
+    # Claims in `deviations` or `init_from` later found to be false. Outside the
+    # hash by design; see the module docstring.
+    corrections: tuple[str, ...] = ()
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -261,6 +277,23 @@ VITS_DEVIATIONS = (
     "native sample rate is 16 kHz, inherited from the MMS checkpoint, so its "
     "output carries no energy above 8 kHz",
 )
+# Left in the hash exactly as declared. What is false about them is recorded
+# here instead, so r02 and r05 keep matching the configs they trained under.
+VITS_CORRECTIONS = (
+    "3 Oct 2026: init_from names facebook/mms-tts-hin but no warm start was "
+    "ever implemented. VitsAdapter.build calls Vits.init_from_config and never "
+    "reads cfg['init_from']; the project contains no from_pretrained call. "
+    "Every VITS run trained from random initialisation.",
+    "3 Oct 2026: consequently the 16 kHz rate is NOT inherited from a "
+    "checkpoint, and is unmotivated. It was kept rather than changed because "
+    "re-running the finished pair was judged not worth it, so the VITS runs "
+    "carry a narrower band than the 22.05 kHz runs and, at an identical "
+    "12,000-frame budget, 192.00 s of audio per step against 139.32 s, a "
+    "factor of 1.3781. Any FastSpeech 2 against VITS comparison inherits this.",
+    "3 Oct 2026: a warm start was considered and declined. It would import "
+    "training compute the fixed budget does not count, and the equal-compute "
+    "claim was judged worth more than better audio quality.",
+)
 # Architectures excluded from the matrix for compute, with the reason each is
 # excluded. The paper's future-work section is generated from this rather than
 # written separately, so the two cannot disagree.
@@ -288,7 +321,7 @@ def plan_runs() -> list[RunConfig]:
             run_id=rid, architecture="vits", language=lang, input_repr=repr_,
             data=data, sample_rate=16000,
             init_from=f"facebook/mms-tts-{'hin' if lang == 'hindi' else 'mar'}",
-            deviations=VITS_DEVIATIONS, **kw)
+            deviations=VITS_DEVIATIONS, corrections=VITS_CORRECTIONS, **kw)
 
     # Hindi main: three architectures, phoneme input
     runs.append(RunConfig(run_id="r01", architecture="fastspeech2", language="hindi",

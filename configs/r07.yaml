@@ -20,4 +20,5 @@ merge_nukta: false
 aligner: internal_mas
 vocoder: hifigan_hindi
 deviations: []
+corrections: []
 notes: ladder rung; the 9 h rung is r01
