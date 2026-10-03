@@ -402,6 +402,12 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                    **({"losses": [round(x, 5) for x in losses],
                        "grad_norms": [round(x, 4) for x in gnorms]}
                       if len(opts) > 1 else {}),
+                   # The terms the headline scalar is made of. For FastSpeech 2
+                   # the mel L1 is under one per cent of the sum and the rest is
+                   # mean squared error on f0 in hertz, so a curve of `loss`
+                   # alone is a pitch-error curve wearing a quality label.
+                   **({"components": dict(adapter.last_components)}
+                      if getattr(adapter, "last_components", None) else {}),
                    "frames": len(batch) * max(u.frames for u in batch),
                    "elapsed_s": round(time.time() - t0, 1)}
             with log_path.open("a", encoding="utf-8") as fh:

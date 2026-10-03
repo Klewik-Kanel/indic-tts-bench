@@ -112,6 +112,43 @@ class AdapterBase:
     # tuple is a KeyError in collate, not silent wrong data.
     needs: tuple[str, ...] = ()
 
+    def _record(self, loss_dict) -> None:
+        """Keep the scalar terms of the last loss, for the step record.
+
+        The headline scalar hides what it is made of, and for FastSpeech 2 that
+        matters: its objective is the sum of a mel L1 and four other terms, two
+        of which are mean squared errors on f0 in hertz and on an unnormalised
+        frame energy. Measured on the Hindi corpus, those two carry roughly 615
+        of a mean predictor's 617, so the mel term is under one per cent of the
+        total and the headline number is mostly a pitch error. A loss curve
+        without the breakdown cannot show that, which is how the 5 h and 1 h
+        rungs came to differ by 29.9x with no interpretation attached.
+
+        Only 0-dim values are kept, and `loss` is dropped because the loop
+        already logs it. Failures here are swallowed: a logging field must not
+        be able to end a training run.
+        """
+        out = {}
+        try:
+            for k, v in dict(loss_dict).items():
+                if k == "loss":
+                    continue
+                try:
+                    if hasattr(v, "detach"):
+                        if getattr(v, "ndim", 0) != 0:
+                            continue
+                        v = v.detach()
+                    out[k] = round(float(v), 5)
+                except Exception:
+                    continue
+        except Exception:
+            return
+        self.last_components = out
+
+    # Set by `_record`, read by the loop. A class-level default means an
+    # adapter that never records one still answers the loop's question.
+    last_components: dict = {}
+
     def _features(self, batch, cfg):
         import numpy as np
         from . import features as F
@@ -366,6 +403,7 @@ class FastSpeech2Adapter(CoquiAdapter):
         # train_step takes no optimizer_idx at all. `prepare` on CoquiAdapter
         # has already run format_batch_on_device.
         _outputs, loss_dict = model.train_step(t, self._criterion)
+        self._record(loss_dict)
         return loss_dict["loss"]
 
 
@@ -489,6 +527,7 @@ class VitsAdapter(CoquiAdapter):
         """
         _, loss_dict = model.train_step(t, self._criterion,
                                         optimizer_idx=optimizer_idx)
+        self._record(loss_dict)
         return loss_dict["loss"]
 
 
@@ -728,6 +767,7 @@ class MatchaAdapter(AdapterBase):
         the config and the deviations table.
         """
         losses = model.get_losses(t)
+        self._record(losses)
         return sum(losses.values())
 
 
@@ -1068,6 +1108,7 @@ class HiFiGanAdapter(AdapterBase):
     def loss(self, model, t: dict, optimizer_idx: int = 0):
         """Discriminator loss at index 0, generator loss at index 1."""
         _outputs, loss_dict = model.train_step(t, self._criterion, optimizer_idx)
+        self._record(loss_dict)
         return loss_dict["loss"]
 
 
