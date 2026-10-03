@@ -1185,16 +1185,49 @@ at step 1, so the cost of finding out was a spent pair slot. Now it is seconds.
     marathi/phoneme   5559 utterances,  78-symbol vocabulary, 0 OOV
     marathi/grapheme  5559 utterances, 1 distinct OOV symbol
 
-**One OOV symbol is left, and it is a data question.** `ma_007005` reads
+**One OOV symbol was left, and the recording settled it.** `ma_007005` reads
 
     सध्या या सर्व गोष्टीzबरोबरच फायबर ग्लासचाही मोठ्या प्रमाणावर उपयोग केला जातो.
 
-A Latin `z` sits inside a Devanagari word. The phoneme arm never noticed because
-the phonemiser maps it to something inside the phoneme inventory. [Inference]
-From the surrounding grammar the word is गोष्टींबरोबरच, which would make the `z`
-a slip for anusvara U+0902; that reading is not stated anywhere in the data, so
-adding it to `TYPO_MAP` is a transcript edit on a guess and is left for Kaustubh
-rather than made here. `TYPO_MAP` already carries comparable documented repairs
-(आॅ → ऑ, ऱ → र, seven southern short vowels), so the mechanism and the
-precedent exist. Until it is decided, marathi/grapheme fails preflight, which
-blocks r18 and r19 and nothing else.
+A Latin `z` sits inside a Devanagari word. The grammar suggests गोष्टींबरोबरच,
+which would make the `z` a slip for anusvara U+0902, but grammar is not
+evidence about what was said, so the audio was checked instead. The speaker
+nasalises. The repair is therefore from the recording.
+
+`latin_z_to_anusvara` is scoped to the Devanagari-flanked case,
+`(?<=[\u0900-\u097F])z(?=[\u0900-\u097F])`, mirroring `colon_to_visarga`
+rather than going into `TYPO_MAP`. A bare `z` → anusvara entry there would
+rewrite any Latin token that ever reaches the chain; an unflanked `z` now stays
+put and fails the coverage check loudly instead of being silently nasalised.
+One occurrence across both corpora.
+
+The phoneme arm never raised on this character because the phonemiser mapped it
+to /z/, which is in the phone inventory for ज़. So the defect was invisible on
+that side while being fatal on the other, and the arms disagreed about this
+utterance for a second reason entirely separate from the digits. With the
+repair, anusvara before the labial /b/ assimilates and the phone is /m/:
+
+    before:  oː ʂ ʈ iː z b ə r oː
+    after:   oː ʂ ʈ iː m b ə r oː
+
+All four combinations are now clean:
+
+    hindi/phoneme     5485 utterances,  78-symbol vocabulary, 0 OOV
+    hindi/grapheme    5485 utterances, 136-symbol vocabulary, 0 OOV
+    marathi/phoneme   5559 utterances,  78-symbol vocabulary, 0 OOV
+    marathi/grapheme  5559 utterances, 136-symbol vocabulary, 0 OOV
+
+**This changes one utterance for the phoneme arm, which has a consequence for
+r15.** r15 was launched before the repair and is training on /z/ at that
+position. r18 will train on /m/. The pair differs in one utterance of 5,559,
+0.0180% of the corpus and one phone within it, which is the kind of asymmetry
+this project has otherwise refused to carry. Hindi is unaffected, so r01, r04,
+r07 and r08 are untouched; `normalize` is shared, but no Hindi transcript
+contains a Devanagari-flanked `z`, which is also why hindi/grapheme reported 0
+OOV before the repair existed.
+
+**The queue now checks coverage for every run in a pair, not just the first.**
+`queue_all.sh` dry-ran only `FIRST`, which is precisely how r18 reached the GPU:
+r15 dry-ran clean and r18 died at step 1 with the slot already spent. The gate
+sits before the memory fractions are computed and skips a vocoder, whose
+`input_repr` is `none` and which has no vocabulary to check.

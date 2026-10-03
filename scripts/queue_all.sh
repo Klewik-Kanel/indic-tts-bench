@@ -18,6 +18,10 @@
 #     memory fraction computed from whatever is actually free. Waiting forever
 #     for someone else's job to finish is how a queue silently does nothing.
 #   - it offloads weights after every pair, because the GPU access is temporary.
+#   - before launching, every run in the pair has its front-end output checked
+#     against its vocabulary. The dry run covers only the first of a pair, and
+#     a vocabulary miss raises inside collate at step 1, so without this a
+#     second-position run can take the whole slot down with it.
 #
 #   setsid nohup bash scripts/queue_all.sh > /workspace/runs/queue.log 2>&1 &
 set -uo pipefail
@@ -44,6 +48,8 @@ PAIRS=(
 say() { echo "[$(date -u +%m-%d\ %H:%M:%S)] $*"; }
 
 arch_of() { grep -m1 '^architecture:' "$REPO/configs/$1.yaml" | awk '{print $2}'; }
+lang_of() { grep -m1 '^language:'     "$REPO/configs/$1.yaml" | awk '{print $2}'; }
+repr_of() { grep -m1 '^input_repr:'   "$REPO/configs/$1.yaml" | awk '{print $2}'; }
 
 finished() {
   [ -d "$RUNS/$1/checkpoints/step_100000" ] && return 0
@@ -161,6 +167,27 @@ for pair in "${PAIRS[@]}"; do
         say "  Set init_from in configs/$r.yaml to a downloaded HiFi-GAN and re-run this script."
         skip_pair=1
       fi
+    fi
+  done
+  [ "$skip_pair" = "1" ] && { say "pair skipped, continuing with the rest"; continue; }
+
+  # Text coverage, for EVERY run in the pair. The dry run below exercises
+  # only FIRST, which is exactly how r18 was launched to its death: r15 dry-ran
+  # clean, then r18 raised KeyError on an out-of-inventory symbol inside
+  # collate, on the prefetch thread, at step 1, having burned the pair slot.
+  # This check is text only and costs seconds. input_repr "none" is a vocoder,
+  # which has no vocabulary and nothing to check.
+  skip_pair=0
+  for r in "${todo[@]}"; do
+    rep=$(repr_of "$r")
+    [ "$rep" = "none" ] && continue
+    lang=$(lang_of "$r")
+    if ! "$PY" "$REPO/scripts/check_text_coverage.py" \
+          --lang "$lang" --input-repr "$rep" > "$RUNS/coverage_$r.log" 2>&1; then
+      say "SKIPPING $r: front end emits symbols outside its vocabulary."
+      say "  It would raise in collate at step 1. See $RUNS/coverage_$r.log"
+      tail -n 8 "$RUNS/coverage_$r.log"
+      skip_pair=1
     fi
   done
   [ "$skip_pair" = "1" ] && { say "pair skipped, continuing with the rest"; continue; }

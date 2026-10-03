@@ -109,3 +109,52 @@ def test_grapheme_vocabulary_size_is_unchanged():
     """136 symbols, so r18 requeues with the table size r04 already trained."""
     from src.train.text import Vocab
     assert len(Vocab.build("grapheme")) == 136
+
+
+# -- the other thing that left the grapheme inventory -----------------------
+#
+# ma_007005 carried a Latin z inside a Devanagari word. Unlike the digits this
+# is a transcript defect rather than a code path, and it was settled by
+# listening to the recording: the speaker nasalises, so the character stands
+# where anusvara should be. The repair is scoped to the Devanagari-flanked
+# case, because a bare z -> anusvara mapping would rewrite any Latin token
+# that ever reaches the chain.
+
+MA_007005 = ("सध्या या सर्व गोष्टीzबरोबरच फायबर ग्लासचाही "
+             "मोठ्या प्रमाणावर उपयोग केला जातो.")
+
+
+def test_flanked_z_becomes_anusvara():
+    assert normalize("गोष्टीzबरोबरच") == "गोष्टींबरोबरच"
+
+
+def test_unflanked_z_is_left_alone():
+    """Not a blanket rewrite: a z that is not between Devanagari stays.
+
+    If one ever appears in a corpus it should fail the coverage check loudly
+    rather than be silently turned into a nasal.
+    """
+    for text in ("zebra", "क z ब", "zकब", "कबz"):
+        assert "z" in normalize(text), text
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_ma_007005_is_inside_both_inventories(language):
+    g2p = G2P.for_language(language)
+    assert set(g2p.graphemes(MA_007005)) <= set(grapheme_inventory())
+    assert set(g2p.phonemize(MA_007005)) <= set(phoneme_inventory())
+
+
+def test_the_repair_reaches_the_phoneme_arm_too():
+    """The nasal must be heard, not just made representable.
+
+    Before the repair the phonemiser mapped the character to /z/, which is in
+    the phone inventory, so the phoneme arm never raised and the defect was
+    invisible on that side. Anusvara before the labial /b/ assimilates, so the
+    phone at that position is now /m/.
+    """
+    phones = G2P.for_language("marathi").phonemize(MA_007005)
+    assert "z" not in phones
+    assert "".join(phones).count("m") >= 1
+    window = phones[15:24]
+    assert "m" in window, window

@@ -117,6 +117,28 @@ def colon_to_visarga(text: str) -> str:
     return re.sub(r"(?<=[\u0900-\u097F]):", "\u0903", text)
 
 
+def latin_z_to_anusvara(text: str) -> str:
+    """A Latin z wedged between two Devanagari letters is a typed anusvara.
+
+    One occurrence across both corpora, ma_007005:
+
+        सध्या या सर्व गोष्टीzबरोबरच फायबर ग्लासचाही मोठ्या प्रमाणावर उपयोग केला जातो.
+
+    The recording was checked and the speaker nasalises, so the word is
+    गोष्टींबरोबरच. The repair is therefore from the audio, not from the grammar.
+
+    Scoped to the Devanagari-flanked case rather than mapped unconditionally in
+    TYPO_MAP: a bare "z" -> anusvara entry would rewrite any Latin token that
+    ever reaches this chain. A z that is not flanked this way stays put and is
+    caught by scripts/check_text_coverage.py instead of being silently changed.
+
+    The phoneme arm never tripped on this character because the phonemiser maps
+    z into the phone inventory. Only the grapheme arm raised, Latin letters
+    being outside the U+0900 block that defines its inventory.
+    """
+    return re.sub(r"(?<=[\u0900-\u097F])z(?=[\u0900-\u097F])", "\u0902", text)
+
+
 def map_punctuation(text: str) -> str:
     for src, dst in PUNCT_MAP.items():
         text = text.replace(src, dst)
@@ -141,7 +163,8 @@ def normalize(text: str) -> str:
     """Full normalisation chain. Order matters.
 
     NFC first so that combining marks sit in canonical order, then nukta
-    composition, then digits, then punctuation, then whitespace.
+    composition, then the character repairs, then digits, then punctuation,
+    then whitespace.
     """
     text = unicodedata.normalize("NFC", text)
     text = strip_zero_width(text)
@@ -149,6 +172,7 @@ def normalize(text: str) -> str:
     text = strip_orphan_nukta(text)
     text = repair_typos(text)
     text = colon_to_visarga(text)
+    text = latin_z_to_anusvara(text)
     text = devanagari_digits_to_ascii(text)
     text = map_punctuation(text)
     return collapse_whitespace(text)
