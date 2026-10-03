@@ -130,11 +130,14 @@ def partition(g2p, reference: str, hypothesis: str) -> dict:
     edit distance lives, so this module cannot drift from the headline rate.
     """
     from src.analysis.schwa_sites import word_stats
-    from src.eval.asr import edit_distance
-    from src.g2p import normalize as _norm
+    from src.eval.asr import edit_distance, normalise_for_scoring
 
-    ref_words = _norm.normalize(reference).split()
-    hyp_words = _norm.normalize(hypothesis).split()
+    # The SAME text form the corpus rate uses, punctuation removed. A trailing
+    # comma is one more segment to `word_stats`, which moves a final site off
+    # the end of the word and reclassifies it as medial: see
+    # src/eval/asr.strip_punctuation for the measurement.
+    ref_words = normalise_for_scoring(reference).split()
+    hyp_words = normalise_for_scoring(hypothesis).split()
 
     edits = {c: 0 for c in CLASSES}
     chars = {c: 0 for c in CLASSES}

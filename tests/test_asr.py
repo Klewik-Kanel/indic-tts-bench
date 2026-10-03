@@ -210,3 +210,53 @@ def test_stereo_is_mixed_to_mono():
 def test_the_resampler_is_named_so_the_table_can_state_it():
     assert asr.RESAMPLER == "soxr_hq"
     assert asr.TARGET_SR == 16000
+
+
+# --- punctuation ------------------------------------------------------------
+
+def test_punctuation_is_removed_because_no_ctc_recogniser_emits_it():
+    """Measured: 41 and 48 per cent of the character error on the first two
+    ground-truth utterances was commas and a full stop."""
+    assert asr.cer("कमल, खिला.", "कमल खिला") == 0.0
+    assert asr.cer("कमल; खिला!", "कमल खिला") == 0.0
+
+
+def test_the_danda_is_removed_too():
+    assert asr.cer("कमल खिला।", "कमल खिला") == 0.0
+    assert asr.cer("कमल॥", "कमल") == 0.0
+
+
+def test_combining_marks_are_not_punctuation_and_must_survive():
+    """The nukta, anusvara and visarga are Mn or Mc, and they are the
+    contrasts this corpus is about. Stripping them would silently erase the
+    distinctions being measured."""
+    for mark in ("़", "ं", "ः"):
+        assert mark in asr.normalise_for_scoring("क" + mark), repr(mark)
+    assert asr.normalise_for_scoring("कर्ज़") == "कर्ज़"
+
+
+def test_a_nukta_difference_is_still_an_error():
+    """The stripping must not be so eager that it hides a real contrast."""
+    assert asr.cer("कर्ज़", "कर्ज") > 0.0
+
+
+def test_strip_punctuation_leaves_the_letters_alone():
+    assert asr.strip_punctuation("कमल, खिला.") == "कमल खिला"
+    assert asr.strip_punctuation("कमल") == "कमल"
+
+
+def test_wer_also_sees_punctuation_stripped():
+    """Otherwise 'खिला.' and 'खिला' would be two different words."""
+    assert asr.wer("कमल खिला.", "कमल खिला") == 0.0
+
+
+def test_normalise_for_scoring_collapses_the_gap_punctuation_leaves():
+    """Removing a comma between two words must not leave a double space, or
+    the word split produces an empty token."""
+    out = asr.normalise_for_scoring("कमल , खिला")
+    assert "  " not in out
+    assert out.split() == ["कमल", "खिला"]
+
+
+def test_corpus_cer_is_punctuation_free_as_well():
+    assert asr.corpus_cer([("कमल, खिला.", "कमल खिला")]) == 0.0

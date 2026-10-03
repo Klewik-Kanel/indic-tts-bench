@@ -103,10 +103,51 @@ def lang_code(name: str, language: str) -> str:
 
 # --- the comparison --------------------------------------------------------
 
-def _chars(text: str, drop_spaces: bool) -> list[str]:
+# Devanagari punctuation that unicodedata already calls Po, listed so the
+# intent is readable rather than implied by a category test.
+DANDA, DOUBLE_DANDA = "\u0964", "\u0965"
+
+
+def strip_punctuation(text: str) -> str:
+    """Remove punctuation, which no CTC recogniser emits.
+
+    Measured on the Hindi test split: 41 and 48 per cent of the character
+    error on the first two ground-truth utterances was commas and a full stop
+    that the recogniser was never going to produce. Scoring against punctuated
+    references measures the transcription convention, not the audio.
+
+    It also corrupted the deletion-site partition, which is the worse failure.
+    `word_stats` asks whether a schwa site is the LAST segment of the word, and
+    a trailing comma is one more segment: all six final-class words sampled
+    from the test split were reclassified from final to medial by appending a
+    comma. So the final class had been excluding every clause-final word, the
+    position where final schwa deletion is most audible, and the medial class
+    had been contaminated with them. The punctuation share of characters was
+    0.0000 in the final class against 0.0690 and 0.0561 in the other two,
+    which is what a reclassification looks like from the outside.
+
+    Only Unicode punctuation categories are removed. Combining marks are not
+    punctuation: the nukta, the anusvara and the visarga are Mn or Mc and stay,
+    which they must, because they are the contrasts this corpus is about.
+    """
+    return "".join(c for c in text
+                   if not unicodedata.category(c).startswith("P"))
+
+
+def normalise_for_scoring(text: str) -> str:
+    """The one text form both the character rate and the partition read.
+
+    Exported so src/analysis/position_errors.py cannot drift from it: the class
+    rates and the corpus rate have to be scoring the same strings, and a second
+    copy of this chain would be a second convention.
+    """
     from src.g2p import normalize as _norm
-    text = _norm.normalize(text)
-    text = unicodedata.normalize("NFC", text)
+    text = unicodedata.normalize("NFC", _norm.normalize(text))
+    return _norm.collapse_whitespace(strip_punctuation(text))
+
+
+def _chars(text: str, drop_spaces: bool) -> list[str]:
+    text = normalise_for_scoring(text)
     if drop_spaces:
         text = "".join(text.split())
     return list(text)
@@ -165,9 +206,8 @@ def wer(reference: str, hypothesis: str) -> float:
     published numbers. It is the weaker instrument here for the reason in
     `cer`: one slurred schwa inside a word costs a whole word.
     """
-    from src.g2p import normalize as _norm
-    ref = _norm.normalize(reference).split()
-    hyp = _norm.normalize(hypothesis).split()
+    ref = normalise_for_scoring(reference).split()
+    hyp = normalise_for_scoring(hypothesis).split()
     if not ref:
         raise ValueError("empty reference after normalisation: no rate exists")
     return edit_distance(ref, hyp) / len(ref)

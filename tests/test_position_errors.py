@@ -242,3 +242,59 @@ def test_the_real_hindi_front_end_produces_all_three_classes():
     seen = [c for c in pe.CLASSES if p["rates"][c].words]
     assert len(seen) >= 2, f"only one class present: {seen}"
     assert sum(p["rates"][c].edits for c in pe.CLASSES) == 0
+
+
+# --- punctuation must not move a word between classes -----------------------
+
+def test_a_trailing_comma_does_not_reclassify_a_final_site():
+    """The defect this guards against, measured on 3 October.
+
+    `word_stats` asks whether a schwa site is the LAST segment of the word,
+    and a comma is one more segment. All six final-class words sampled from
+    the Hindi test split were reclassified final -> medial by appending a
+    comma, so the final class had been excluding every clause-final word and
+    the medial class had been contaminated with them. The punctuation share of
+    characters was 0.0000 in the final class against 0.0690 and 0.0561 in the
+    other two, which is what that looks like from the outside.
+    """
+    try:
+        from src.g2p import G2P
+        g2p = G2P.for_language("hindi")
+    except Exception:                                       # noqa: BLE001
+        pytest.skip("no Hindi front end available here")
+
+    from src.analysis.schwa_sites import word_stats
+    from src.eval.asr import normalise_for_scoring
+
+    finals = [w for w in ("आज", "जनम", "एक", "पर", "नख", "और")
+              if pe.classify(word_stats(g2p, w)) == pe.FINAL]
+    assert finals, "no final-class words to test with"
+    for w in finals:
+        token = normalise_for_scoring(w + ",").split()[0]
+        assert pe.classify(word_stats(g2p, token)) == pe.FINAL, w
+
+
+def test_partition_reads_the_same_text_form_as_the_corpus_rate():
+    """Two normalisation chains would be two conventions, and the class rates
+    and the corpus rate would be scoring different strings."""
+    import pathlib
+    src = pathlib.Path("src/analysis/position_errors.py").read_text()
+    body = src[src.index("def partition("):]
+    assert "normalise_for_scoring" in body
+    assert "_norm.normalize(" not in body, \
+        "partition must not normalise independently of src.eval.asr"
+
+
+def test_punctuation_does_not_add_errors_to_any_class():
+    g = FakeG2P(final=["कमल"])
+    p = pe.partition(g, "कमल, खिला.", "कमल खिला")
+    for c in pe.CLASSES:
+        assert p["rates"][c].edits == 0, c
+    assert p["insertions"] == 0
+
+
+def test_a_punctuated_reference_word_keeps_its_characters_countable():
+    """The comma must leave the word, not the word leave the class."""
+    g = FakeG2P(final=["कमल"])
+    p = pe.partition(g, "कमल, खिला", "कमल खिला")
+    assert p["rates"][pe.FINAL].chars == len("कमल")
