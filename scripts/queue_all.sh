@@ -60,8 +60,14 @@ PAIRS=(
   "r15 r18"      # Marathi FastSpeech 2: the control's two arms
   "r16 r19"      # Marathi VITS: the control's two arms
   "r11 r12"      # VITS ladder, 5 h and 1 h
-  "r13 r14"      # VITS ladder, 30 min and 10 min
-  "r09 r10"      # FastSpeech 2 ladder, 30 min and 10 min
+  "r09 r10"      # FastSpeech 2 ladder, 30 min and 10 min. Before the VITS
+                 # small rungs because it buys the same information — how the
+                 # smallest rungs behave — for 4.2 h instead of 9.7.
+  "r13 r14"      # VITS ladder, 30 min and 10 min. LAST of everything: the
+                 # smallest rungs are where seed variance is widest and the
+                 # claims thinnest, and this is the most expensive pair to
+                 # discover that about. If the seed floors come back wide,
+                 # this is the first thing to cut.
 )
 
 say() { echo "[$(date -u +%m-%d\ %H:%M:%S)] $*"; }
