@@ -1464,3 +1464,84 @@ none of them by deletion, which is the `min_vowels` guard declining to strip a
 monosyllable.
 
 `scripts/phone_stats.py` produces this for any language and rung.
+
+## 2026-10-03 — Griffin-Lim is exonerated; the mel is over-smoothed; every run converged by 50k
+
+The FastSpeech 2 arms came out of the demo as noise rather than as metallic
+speech, which is not what a correct inversion of a trained mel sounds like. The
+cause is now separated into three findings, in the order they were established.
+
+**The inverter is not at fault, and the argument is clean.** Griffin-Lim
+reproduced r01's predicted mel at L1 0.0754 against 0.1431 for the ground-truth
+mel of the same utterance, so it was **1.90x more faithful** on the input that
+sounds worse. An inverter more accurate on the worse-sounding input cannot be
+what makes it worse. librosa 1.0.0 on the DGX also round-trips ground truth at
+0.1431 against the container's 0.1434 with librosa 0.11.0, so the version
+difference is closed as a concern.
+
+**The mel is over-smoothed along time.**
+
+                                               gt     r01   r01 as % of gt
+    temporal variation (frames shuffled)   2.1477  1.1029            51.4%
+    per-band std over time                  2.071   1.529            73.8%
+    per-frame std across bands              1.704   1.848           108.5%
+
+Spectral shape within a frame is intact, marginally richer than ground truth.
+What is missing is frame-to-frame structure: half of it. That is the standard
+fixed point of a non-autoregressive mel predictor under an L1 loss, which
+regresses toward the mean of the plausible mels. Griffin-Lim is the worst
+possible partner for it, and not coincidentally: it carries no prior and must
+recover phase from magnitudes by iteration, so a blurred magnitude spectrum
+gives it nothing to lock onto. A neural vocoder has a learned prior and
+tolerates smoothing far better, which is what r06 is for.
+
+The competing hypothesis is dead. A failed internal aligner would collapse
+durations toward uniform; r01 predicted 160 frames for about 30 tokens, 5.3
+frames or 62 ms per phone, at 87.0% of the reference utterance's length. The
+aligner that replaced MFA is working.
+
+**Every run converged by about step 50,000, and the second half bought nothing.**
+
+    run   arch  data      start     ~50k   80-90k  90-100k   2nd half / 1st
+    r01   fs2   9h      1665.72   309.30   307.74   314.60          -0.0039
+    r04   fs2   9h      1672.91   301.41   295.75   300.33           0.0008
+    r07   fs2   5h      1998.41   303.50   306.37   299.85           0.0022
+    r08   fs2   1h      1705.62    16.03     9.80    10.04           0.0035
+    r02   vits  9h        58.44    27.85    27.01    27.03           0.0268
+    r05   vits  9h        60.10    27.30    26.62    26.73           0.0174
+
+For FastSpeech 2 this is informative, the loss being a reconstruction loss: the
+over-smoothing is the objective's fixed point and no further training reduces
+it. For VITS it is not. Its loss is a sum including adversarial terms, and a
+flat generator loss is weakly related to perceptual quality, so r02's plateau is
+NOT evidence that r02 is as good as it gets. [Inference, from how the objective
+is composed rather than from an experiment here.]
+
+Consequence for the budget question in b4, and a finding in its own right: for
+this corpus and these architectures the training objective converges at roughly
+half the declared budget. The remaining runs must still take 100,000 steps,
+because comparability across the matrix is the point, but a future study on this
+data would not need to.
+
+Consequence for b12: since more steps are wasted either way, the VITS re-run
+decision is not about compute. An MMS warm start changes the starting basin,
+which is the kind of change that can help where more steps cannot, and is the
+only option that might improve how VITS sounds. 22.05 kHz from scratch makes the
+cross-architecture comparison defensible and does nothing for quality. The two
+serve different goals.
+
+**One anomaly, open, and it gates the ladder.** r01 at 9 h ends on 314.60 and
+r07 at 5 h on 299.85, a ratio of 0.953 and effectively flat. r07 to r08 at 1 h
+is a 29.9x drop for five times less data. An overfitting curve does not have a
+cliff in it. Either the 1 h rung is memorised outright, roughly 530 utterances
+over about 4,000 epochs, or the logged loss is not comparable across rungs,
+which would make the ladder's loss trend meaningless as plotted. To check:
+whether the logged value is a mean over frames or a sum, and what the per
+component terms do at the same step.
+
+**The placeholder is not being shipped for FastSpeech 2.** A silent arm with an
+explanation is honest; a noise arm labelled "placeholder" invites a listener to
+conclude the model is broken when what they are hearing is the inversion method
+meeting a smoothed mel. `src/export/griffinlim.py` stays, having earned its
+place on the ground-truth path and as a debugging tool, but `--griffin-lim` is
+not passed when rendering the page. Phase 7 task 9 waits for r06.
