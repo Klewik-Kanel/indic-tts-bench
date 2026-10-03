@@ -35,14 +35,25 @@ OFFLOAD=${OFFLOAD:-1}                      # back up after each pair
 
 # Pairs, in priority order. r03 is absent on purpose: Matcha is future work as
 # of 2 October, see FUTURE_WORK in src/train/config.py.
+# Reordered on 3 Oct. The vocoders came last while they were an upper bound on
+# 10 GPU-h each with nothing depending on them. Both of those changed: the
+# FastSpeech 2 arms are mute without one, which blocks the demo, the listening
+# test and every waveform metric, and the mel-domain evidence on 3 Oct showed
+# the FastSpeech 2 mels are over-smoothed in a way only a vocoder with a
+# learned prior can carry. They also stop on a plateau criterion rather than
+# spending a fixed budget, so they are the cheapest item here.
+#
+# The VITS pairs sit behind them deliberately: their configuration is still
+# open (see RESULTS, 3 Oct, init_from) and every VITS run has to share whatever
+# it settles on, the four ladder rungs included.
 PAIRS=(
-  "r02 r05"      # Hindi VITS: the phonemic-versus-graphemic ablation
+  "r02 r05"      # Hindi VITS: done at 100k, pending a decision on re-running
+  "r06 r17"      # the two vocoders, fine-tuned on our own mels
   "r15 r18"      # Marathi FastSpeech 2: the control's two arms
   "r16 r19"      # Marathi VITS: the control's two arms
   "r11 r12"      # VITS ladder, 5 h and 1 h
   "r13 r14"      # VITS ladder, 30 min and 10 min
   "r09 r10"      # FastSpeech 2 ladder, 30 min and 10 min
-  "r06 r17"      # the two vocoders, fine-tuned on our own mels
 )
 
 say() { echo "[$(date -u +%m-%d\ %H:%M:%S)] $*"; }
