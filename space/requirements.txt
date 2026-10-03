@@ -1,0 +1,26 @@
+# Pinned to the DGX venv that produced the weights, so the Space runs the same
+# numerics as training. Python there is 3.12.3.
+#
+# CPU wheels: the DGX has torch 2.14.1+cu126, and the CUDA wheel is gigabytes
+# of kernels this Space can never use. Same version, CPU build.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchaudio==2.11.0+cpu
+
+coqui-tts==0.27.5
+numpy==2.5.3
+huggingface_hub==0.36.2
+
+# Everything else coqui needs is left to pip. librosa, scipy, numba and
+# transformers are all present in the DGX venv but nothing on the inference
+# path imports them: src/train/features.py defers its imports and VITS never
+# computes a mel, so pinning them here would only add ways for the build to
+# fail. soundfile likewise — Gradio takes the numpy array directly and
+# write_wav falls back to the standard library's wave module.
+
+# The project itself, at the commit whose code this Space runs. Not a branch:
+# a demo has to be able to say which version it is.
+indic-tts-bench @ git+https://github.com/Klewik-Kanel/indic-tts-bench@906a6a34ee2dadc027c4d7473ddd61b97c0ad623
+
+# gradio is supplied by the Space SDK and is deliberately not pinned here; the
+# app uses only the stable Blocks surface.
