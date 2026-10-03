@@ -112,8 +112,16 @@ def mcd(
     sr: int,
     n_mfcc: int = 25,
     hop_length: int = 256,
-) -> MCDResult:
-    """MCD in dB between a reference and a synthesised waveform."""
+    return_path: bool = False,
+):
+    """MCD in dB between a reference and a synthesised waveform.
+
+    With `return_path`, also returns the DTW path. The F0 stage has to align
+    its tracks the same way MCD aligned its frames, and the alternative to
+    handing the path over is for the caller to recompute the cepstra and the
+    DTW itself, which is a second copy of this function's body and a second
+    place for the alignment to drift. One alignment, one definition.
+    """
     ref = mel_cepstrum(ref_wav, sr, n_mfcc=n_mfcc, hop_length=hop_length)
     syn = mel_cepstrum(syn_wav, sr, n_mfcc=n_mfcc, hop_length=hop_length)
 
@@ -125,10 +133,11 @@ def mcd(
     diffs = np.array([ref_c[i] - syn_c[j] for i, j in path])
     per_frame = MCD_CONSTANT * np.sqrt(np.sum(diffs * diffs, axis=1))
 
-    return MCDResult(
+    result = MCDResult(
         mcd_db=float(np.mean(per_frame)),
         n_frames=len(path),
         ref_frames=len(ref_c),
         syn_frames=len(syn_c),
         length_ratio=len(syn_c) / len(ref_c),
     )
+    return (result, path) if return_path else result
