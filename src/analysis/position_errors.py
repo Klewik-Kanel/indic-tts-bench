@@ -184,6 +184,107 @@ def accumulate(parts: list[dict]) -> dict:
     }
 
 
+# --- resampling ------------------------------------------------------------
+#
+# The class denominators are small. On the first ten Hindi test utterances the
+# medial class held 96 characters in 21 word tokens, and the counts behind the
+# headline were 16 edits against 4. A difference of two pooled rates over
+# denominators that size has no analytic standard error worth quoting, because
+# the quantity is a ratio of sums over a handful of utterances and the
+# utterances are the sampling unit. Resampling them is the honest interval.
+
+def _rates_from_rows(rows: list[dict], cls: str, idx) -> float | None:
+    """Pooled rate for one class over the selected rows, or None if empty.
+
+    `rows` are per-utterance records carrying `<cls>_edits` and `<cls>_chars`,
+    which is what scripts/score_intelligibility.py already writes, so the
+    bootstrap reads the same numbers the table prints rather than recomputing
+    them by a second route.
+    """
+    e = c = 0
+    for i in idx:
+        r = rows[i]
+        e += int(r.get(f"{cls}_edits", 0))
+        c += int(r.get(f"{cls}_chars", 0))
+    return None if c == 0 else e / c
+
+
+def excess_from_rows(rows: list[dict], cls: str, idx=None) -> float | None:
+    """The site class's rate minus the no-site class's, over selected rows."""
+    if idx is None:
+        idx = range(len(rows))
+    idx = list(idx)
+    site = _rates_from_rows(rows, cls, idx)
+    other = _rates_from_rows(rows, NEITHER, idx)
+    if site is None or other is None:
+        return None
+    return site - other
+
+
+def bootstrap_difference(rows_a: list[dict], rows_b: list[dict], cls: str,
+                         n_boot: int = 2000, seed: int = 0,
+                         alpha: float = 0.05) -> dict:
+    """A percentile interval on excess(b) minus excess(a), resampling utterances.
+
+    PAIRED: one set of utterance indices is drawn and applied to both arms, so
+    the interval is on the difference between two systems scored on the same
+    material rather than on two independent samples. Unpaired resampling would
+    widen it by the between-utterance variance that the pairing removes, which
+    is most of it.
+
+    `rows_a` and `rows_b` must be the same utterances in the same order; the
+    function refuses rather than zipping two different sets, because a silent
+    misalignment here produces a confident interval around the wrong quantity.
+
+    Returns the point estimate, the interval, the fraction of resamples whose
+    difference has the same sign as the point estimate, and the number of
+    resamples that had to be discarded because a class was empty in them.
+    """
+    import numpy as np
+
+    if len(rows_a) != len(rows_b):
+        raise ValueError(
+            f"paired bootstrap needs the same utterances: {len(rows_a)} "
+            f"against {len(rows_b)}")
+    ids_a = [r.get("id") for r in rows_a]
+    ids_b = [r.get("id") for r in rows_b]
+    if ids_a != ids_b:
+        raise ValueError("paired bootstrap needs the same utterance order")
+    n = len(rows_a)
+    if n < 3:
+        raise ValueError(f"{n} utterances is too few to resample")
+
+    point_a = excess_from_rows(rows_a, cls)
+    point_b = excess_from_rows(rows_b, cls)
+    if point_a is None or point_b is None:
+        return {"n": n, "point": None,
+                "reason": f"class {cls!r} or {NEITHER!r} has no characters"}
+    point = point_b - point_a
+
+    rng = np.random.default_rng(seed)
+    draws, skipped = [], 0
+    for _ in range(int(n_boot)):
+        idx = rng.integers(0, n, size=n)
+        ea = excess_from_rows(rows_a, cls, idx)
+        eb = excess_from_rows(rows_b, cls, idx)
+        if ea is None or eb is None:
+            skipped += 1
+            continue
+        draws.append(eb - ea)
+    if len(draws) < 100:
+        return {"n": n, "point": point, "n_boot": len(draws),
+                "skipped": skipped,
+                "reason": "too few usable resamples for an interval"}
+    arr = np.sort(np.asarray(draws, dtype=float))
+    lo = float(np.quantile(arr, alpha / 2))
+    hi = float(np.quantile(arr, 1 - alpha / 2))
+    same_sign = float(np.mean(arr > 0) if point > 0 else np.mean(arr < 0))
+    return {"n": n, "point": point, "lo": lo, "hi": hi,
+            "n_boot": len(draws), "skipped": skipped,
+            "alpha": alpha, "same_sign": same_sign,
+            "excludes_zero": (lo > 0.0) or (hi < 0.0)}
+
+
 def contrast(part: dict) -> dict:
     """The number the dissertation asks for, with its own denominator stated.
 

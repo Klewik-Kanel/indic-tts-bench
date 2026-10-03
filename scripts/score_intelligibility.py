@@ -148,6 +148,10 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     record["contrast"] = pe.contrast(pooled)
     record["insertions"] = pooled["insertions"]
 
+    # Kept on the record so the two arms of a pair can be resampled together.
+    # Stripped again before the combined table is written, because the
+    # per-run JSON below already holds them.
+    record["utterances"] = per_utt
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"intel_{rid}_{backend_name}.json").write_text(
         json.dumps({**record, "utterances": per_utt}, indent=1,
@@ -290,6 +294,92 @@ def floor_table(floors: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def counts_table(records: list[dict]) -> str:
+    """Edits over reference characters per class, which the rates alone hide.
+
+    Added because reading 0.1667 and having to work out that it was 16 edits
+    over 96 characters cost a round trip. A rate whose denominator is 96 is a
+    different claim from one whose denominator is 4000, and the table should
+    say which it is.
+    """
+    head = (f"{'run':5s} {'repr':9s} {'asr':16s} {'final':>12s} "
+            f"{'medial':>12s} {'none':>12s} {'all':>12s}")
+    lines = ["COUNTS (edits / reference characters)", head, "-" * len(head)]
+    for r in records:
+        if r.get("skipped"):
+            continue
+        cls = r["classes"]
+        def cell(c):
+            return f"{cls[c]['edits']}/{cls[c]['chars']}"
+        total_e = sum(cls[c]["edits"] for c in ("final", "medial", "neither"))
+        total_c = sum(cls[c]["chars"] for c in ("final", "medial", "neither"))
+        lines.append(
+            f"{r['run_id']:5s} {r['input_repr']:9s} "
+            f"{r['asr'].split('/')[-1][:16]:16s} {cell('final'):>12s} "
+            f"{cell('medial'):>12s} {cell('neither'):>12s} "
+            f"{f'{total_e}/{total_c}':>12s}")
+    return "\n".join(lines)
+
+
+def pair_records(records: list[dict]) -> list[tuple[dict, dict]]:
+    """Phonemic and graphemic records that differ only in input_repr.
+
+    Keyed on everything that must match for the pair to be a comparison:
+    recogniser, architecture, language, data rung and split. Two runs that
+    differ in any of those are not two arms of one contrast.
+    """
+    by_cell: dict[tuple, dict] = {}
+    for r in records:
+        if r.get("skipped") or not r.get("utterances"):
+            continue
+        key = (r.get("asr"), r.get("architecture"), r.get("language"),
+               r.get("step"), r.get("split"))
+        by_cell.setdefault(key, {})[r.get("input_repr")] = r
+    out = []
+    for arms in by_cell.values():
+        if "phoneme" in arms and "grapheme" in arms:
+            out.append((arms["phoneme"], arms["grapheme"]))
+    return out
+
+
+def bootstrap_table(records: list[dict], n_boot: int, seed: int) -> str:
+    """Paired resampling intervals on the grapheme-minus-phoneme excess.
+
+    One index draw is applied to both arms, because the two arms are scored on
+    the same utterances and the pairing removes the between-utterance variance
+    that otherwise dominates the width.
+    """
+    from src.analysis import position_errors as pe
+
+    pairs = pair_records(records)
+    head = (f"{'asr':16s} {'site':7s} {'n':>4s} {'excess':>9s} "
+            f"{'lo':>9s} {'hi':>9s} {'sign':>6s} {'clear of 0':>11s}")
+    lines = [f"PAIRED BOOTSTRAP, grapheme minus phoneme, {n_boot} resamples, "
+             f"seed {seed}", head, "-" * len(head)]
+    if not pairs:
+        lines.append("  no phonemic/graphemic pair among these runs")
+        return "\n".join(lines)
+    for ph, gr in pairs:
+        asr = (ph.get("asr") or "").split("/")[-1][:16]
+        for cls in (pe.FINAL, pe.MEDIAL):
+            try:
+                out = pe.bootstrap_difference(ph["utterances"], gr["utterances"],
+                                              cls, n_boot=n_boot, seed=seed)
+            except ValueError as exc:
+                lines.append(f"{asr:16s} {cls:7s} {'-':>4s}   {exc}")
+                continue
+            if out.get("point") is None or "lo" not in out:
+                lines.append(f"{asr:16s} {cls:7s} {out['n']:4d}   "
+                             f"{out.get('reason', 'no interval')}")
+                continue
+            lines.append(
+                f"{asr:16s} {cls:7s} {out['n']:4d} {out['point']:+9.4f} "
+                f"{out['lo']:+9.4f} {out['hi']:+9.4f} "
+                f"{out['same_sign']:6.2f} "
+                f"{('yes' if out['excludes_zero'] else 'no'):>11s}")
+    return "\n".join(lines)
+
+
 def table(records: list[dict]) -> str:
     head = (f"{'run':5s} {'arch':12s} {'repr':9s} {'asr':15s} {'n':>4s} "
             f"{'CER':>7s} {'final':>7s} {'medial':>7s} {'none':>7s} "
@@ -330,6 +420,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the ground-truth pass. The synthesis numbers "
                          "then have no denominator, so this is for debugging "
                          "only")
+    ap.add_argument("--boot", type=int, default=2000,
+                    help="paired resamples for the interval; 0 skips it")
+    ap.add_argument("--boot-seed", type=int, default=0)
     ap.add_argument("--floor-only", action="store_true",
                     help="transcribe the real recordings and stop. The fastest "
                          "check that a recogniser loaded correctly")
@@ -409,11 +502,23 @@ def main(argv: list[str] | None = None) -> int:
         print(floor_table(floors))
         print()
     print(table(records))
+    print()
+    print(counts_table(records))
+    boot = ""
+    if a.boot:
+        boot = bootstrap_table(records, a.boot, a.boot_seed)
+        print()
+        print(boot)
+    # The per-run JSON already holds them; keeping them here would put every
+    # utterance of every run into the combined file twice.
+    for r in records:
+        r.pop("utterances", None)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     (out_dir / f"intelligibility_{a.lang}_{stamp}.txt").write_text(
         (floor_table(floors) + "\n\n" if floors else "")
-        + table(records) + "\n", encoding="utf-8")
+        + table(records) + "\n\n" + counts_table(records)
+        + (("\n\n" + boot) if boot else "") + "\n", encoding="utf-8")
     (out_dir / f"intelligibility_{a.lang}_{stamp}.json").write_text(
         json.dumps({"reference_floor": floors, "runs": records},
                    indent=1, ensure_ascii=False), encoding="utf-8")

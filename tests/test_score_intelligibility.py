@@ -257,3 +257,102 @@ def test_no_floor_is_documented_as_debugging_only():
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
     i = src.index('"--no-floor"')
     assert "debugging" in src[i:i + 400]
+
+
+# --- counts and the paired bootstrap ----------------------------------------
+
+def _rec(rid, repr_, asr="ai4bharat/x", n=10, utts=None):
+    return {"run_id": rid, "architecture": "vits", "language": "hindi",
+            "input_repr": repr_, "asr": asr, "step": 100000, "split": "test",
+            "n": n, "corpus_cer": 0.1,
+            "classes": {"final": {"edits": 92, "chars": 327, "cer": 0.2813},
+                        "medial": {"edits": 4, "chars": 96, "cer": 0.0417},
+                        "neither": {"edits": 47, "chars": 389, "cer": 0.1208}},
+            "contrast": {"final": {"excess": 0.16}}, "insertions": 3,
+            "utterances": utts or []}
+
+
+def test_the_counts_table_prints_edits_over_characters():
+    """A rate whose denominator is 96 is a different claim from one whose
+    denominator is 4000, and the rates alone do not say which."""
+    out = mod.counts_table([_rec("r02", "phoneme")])
+    assert "COUNTS" in out
+    assert "4/96" in out
+    assert "92/327" in out
+    assert "143/812" in out, "the all-classes total must be the sum"
+
+
+def test_the_counts_table_skips_a_run_that_was_skipped():
+    out = mod.counts_table([{"run_id": "r01", "skipped": "mel-only"}])
+    assert "r01" not in out
+
+
+def test_pairing_matches_the_two_arms_of_one_cell():
+    utts = [{"id": "u1"}]
+    ph, gr = _rec("r02", "phoneme", utts=utts), _rec("r05", "grapheme", utts=utts)
+    pairs = mod.pair_records([gr, ph])
+    assert len(pairs) == 1
+    assert pairs[0][0]["input_repr"] == "phoneme"
+    assert pairs[0][1]["input_repr"] == "grapheme"
+
+
+def test_pairing_does_not_cross_recognisers():
+    """Two arms scored by different recognisers are not one contrast."""
+    utts = [{"id": "u1"}]
+    ph = _rec("r02", "phoneme", asr="ai4bharat/x", utts=utts)
+    gr = _rec("r05", "grapheme", asr="facebook/y", utts=utts)
+    assert mod.pair_records([ph, gr]) == []
+
+
+def test_pairing_does_not_cross_architectures_or_languages():
+    utts = [{"id": "u1"}]
+    ph = _rec("r02", "phoneme", utts=utts)
+    gr = _rec("r18", "grapheme", utts=utts)
+    gr["language"] = "marathi"
+    assert mod.pair_records([ph, gr]) == []
+
+
+def test_an_unpaired_arm_is_not_bootstrapped():
+    out = mod.bootstrap_table([_rec("r02", "phoneme", utts=[{"id": "u1"}])],
+                              100, 0)
+    assert "no phonemic/graphemic pair" in out
+
+
+def test_the_bootstrap_table_reports_an_interval_and_whether_it_clears_zero():
+    pytest.importorskip("numpy")
+    utts_a, utts_b = [], []
+    for i in range(12):
+        utts_a.append({"id": f"u{i}", "final_edits": 1, "final_chars": 20,
+                       "medial_edits": 0, "medial_chars": 8,
+                       "neither_edits": 1, "neither_chars": 20})
+        utts_b.append({"id": f"u{i}", "final_edits": 9, "final_chars": 20,
+                       "medial_edits": 0, "medial_chars": 8,
+                       "neither_edits": 1, "neither_chars": 20})
+    ph = _rec("r02", "phoneme", utts=utts_a)
+    gr = _rec("r05", "grapheme", utts=utts_b)
+    out = mod.bootstrap_table([ph, gr], 300, 0)
+    assert "PAIRED BOOTSTRAP" in out
+    assert "final" in out
+    assert "yes" in out, "a large uniform effect must read as clear of zero"
+
+
+def test_the_bootstrap_names_its_resample_count_and_seed():
+    """A resampled interval is not reproducible unless both are recorded."""
+    out = mod.bootstrap_table([], 1234, 99)
+    assert "1234 resamples" in out
+    assert "seed 99" in out
+
+
+def test_boot_zero_skips_the_interval_entirely():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def main("):]
+    assert "if a.boot:" in body, "--boot 0 must skip the resampling"
+
+
+def test_the_per_utterance_rows_are_stripped_from_the_combined_file():
+    """They are already in the per-run JSON; keeping them writes every
+    utterance of every run twice."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def main("):]
+    assert 'r.pop("utterances", None)' in body
+    assert body.index("bootstrap_table(") < body.index('r.pop("utterances"')

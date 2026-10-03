@@ -298,3 +298,161 @@ def test_a_punctuated_reference_word_keeps_its_characters_countable():
     g = FakeG2P(final=["कमल"])
     p = pe.partition(g, "कमल, खिला", "कमल खिला")
     assert p["rates"][pe.FINAL].chars == len("कमल")
+
+
+# --- the paired bootstrap ---------------------------------------------------
+
+def _rows(spec):
+    """Per-utterance records in the shape score_intelligibility writes."""
+    out = []
+    for i, (fe, fc, ne, nc) in enumerate(spec):
+        out.append({"id": f"u{i:03d}",
+                    "final_edits": fe, "final_chars": fc,
+                    "medial_edits": 0, "medial_chars": 0,
+                    "neither_edits": ne, "neither_chars": nc})
+    return out
+
+
+def test_excess_from_rows_pools_over_the_selected_utterances():
+    rows = _rows([(2, 10, 1, 10), (4, 10, 1, 10)])
+    # final 6/20 = 0.30, neither 2/20 = 0.10
+    assert pe.excess_from_rows(rows, pe.FINAL) == pytest.approx(0.20)
+
+
+def test_excess_from_rows_honours_the_index_selection():
+    rows = _rows([(2, 10, 1, 10), (4, 10, 1, 10)])
+    only_first = pe.excess_from_rows(rows, pe.FINAL, [0])
+    assert only_first == pytest.approx(2 / 10 - 1 / 10)
+
+
+def test_excess_is_none_when_a_class_is_empty_in_the_selection():
+    rows = _rows([(0, 0, 1, 10), (4, 10, 1, 10)])
+    assert pe.excess_from_rows(rows, pe.FINAL, [0]) is None
+
+
+def test_the_bootstrap_is_paired_on_utterance_order():
+    """One index draw applied to both arms. Unpaired resampling would widen
+    the interval by the between-utterance variance the pairing removes."""
+    pytest.importorskip("numpy")
+    a = _rows([(1, 10, 1, 10)] * 8)
+    b = _rows([(5, 10, 1, 10)] * 8)
+    out = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=400, seed=0)
+    assert out["point"] == pytest.approx(0.4)
+    assert out["lo"] == pytest.approx(0.4)
+    assert out["hi"] == pytest.approx(0.4)
+    assert out["excludes_zero"] is True
+
+
+def test_a_real_difference_gives_an_interval_clear_of_zero():
+    pytest.importorskip("numpy")
+    a = _rows([(1, 20, 1, 20)] * 30)
+    b = _rows([(9, 20, 1, 20)] * 30)
+    out = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=800, seed=1)
+    assert out["point"] > 0
+    assert out["lo"] > 0
+    assert out["same_sign"] == pytest.approx(1.0)
+
+
+def test_no_difference_gives_an_interval_containing_zero():
+    pytest.importorskip("numpy")
+    import random
+    rnd = random.Random(7)
+    spec = [(rnd.randint(0, 6), 20, rnd.randint(0, 6), 20) for _ in range(40)]
+    a, b = _rows(spec), _rows(spec)
+    out = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=600, seed=2)
+    assert out["point"] == pytest.approx(0.0)
+    assert out["excludes_zero"] is False
+
+
+def test_mismatched_lengths_raise_rather_than_zipping():
+    pytest.importorskip("numpy")
+    a = _rows([(1, 10, 1, 10)] * 5)
+    b = _rows([(1, 10, 1, 10)] * 4)
+    with pytest.raises(ValueError):
+        pe.bootstrap_difference(a, b, pe.FINAL)
+
+
+def test_mismatched_utterance_order_raises():
+    """A silent misalignment produces a confident interval around the wrong
+    quantity, which is worse than an error."""
+    pytest.importorskip("numpy")
+    a = _rows([(1, 10, 1, 10)] * 5)
+    b = _rows([(1, 10, 1, 10)] * 5)
+    b[2]["id"] = "somethingelse"
+    with pytest.raises(ValueError):
+        pe.bootstrap_difference(a, b, pe.FINAL)
+
+
+def test_too_few_utterances_raises_rather_than_resampling_two():
+    pytest.importorskip("numpy")
+    a = _rows([(1, 10, 1, 10)] * 2)
+    with pytest.raises(ValueError):
+        pe.bootstrap_difference(a, a, pe.FINAL)
+
+
+def test_a_uniform_effect_has_no_resampling_variance():
+    """Worth asserting rather than assuming.
+
+    If every utterance carries the same per-character difference, which
+    utterances are drawn cannot change the ratio of sums, so the interval is a
+    point. Written after a determinism test was built that way by accident and
+    failed for this reason.
+    """
+    pytest.importorskip("numpy")
+    a = _rows([(1, 20, 1, 20)] * 20)
+    b = _rows([(3, 20, 1, 20)] * 20)
+    out = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=300, seed=5)
+    assert out["lo"] == pytest.approx(out["hi"])
+    assert out["point"] == pytest.approx(2 / 20)
+
+
+def test_the_bootstrap_is_deterministic_given_a_seed():
+    """The effect must VARY across utterances, or there is nothing to resample
+    and every seed agrees for a reason that has nothing to do with the RNG."""
+    pytest.importorskip("numpy")
+    import random
+    rnd = random.Random(11)
+    spec = [(rnd.randint(0, 8), 20, rnd.randint(0, 4), 20) for _ in range(25)]
+    a = _rows(spec)
+    # A difference that differs per utterance: some carry it, some do not.
+    b = _rows([(e + (6 if i % 3 == 0 else 0), c, ne, nc)
+               for i, (e, c, ne, nc) in enumerate(spec)])
+    one = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=300, seed=5)
+    two = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=300, seed=5)
+    assert one["lo"] == two["lo"] and one["hi"] == two["hi"]
+    assert one["lo"] < one["hi"], "a varying effect must have a width"
+    three = pe.bootstrap_difference(a, b, pe.FINAL, n_boot=300, seed=6)
+    assert (three["lo"], three["hi"]) != (one["lo"], one["hi"])
+
+
+def test_an_empty_class_reports_a_reason_instead_of_an_interval():
+    pytest.importorskip("numpy")
+    a = _rows([(0, 0, 1, 10)] * 6)
+    out = pe.bootstrap_difference(a, a, pe.FINAL, n_boot=100, seed=0)
+    assert out["point"] is None
+    assert "reason" in out
+
+
+def test_ten_utterances_of_the_measured_medial_counts_do_not_exclude_zero():
+    """The honest check on the 3 October result.
+
+    The medial class held 96 characters in ten utterances, with 4 edits for the
+    phonemic arm and 16 for the graphemic. Spread over ten utterances, a paired
+    resample of that must not come back clear of zero, or the interval is
+    lying.
+    """
+    pytest.importorskip("numpy")
+    # 96 medial characters and 389 no-site characters over 10 utterances.
+    med_c, non_c = 96 // 10, 389 // 10
+    a, b = [], []
+    for i in range(10):
+        a.append({"id": f"u{i}", "medial_edits": 0 if i else 4,
+                  "medial_chars": med_c, "neither_edits": 5,
+                  "neither_chars": non_c})
+        b.append({"id": f"u{i}", "medial_edits": 0 if i else 16,
+                  "medial_chars": med_c, "neither_edits": 5,
+                  "neither_chars": non_c})
+    out = pe.bootstrap_difference(a, b, pe.MEDIAL, n_boot=1000, seed=0)
+    assert out["point"] > 0
+    assert out["excludes_zero"] is False, (
+        "an effect carried by one utterance must not read as significant")
