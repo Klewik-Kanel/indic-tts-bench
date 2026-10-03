@@ -59,10 +59,11 @@ def _cap_threads(n: int, device: str) -> None:
 
 def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
                  split: str, limit: int | None, device: str,
-                 out_dir: pathlib.Path) -> dict:
+                 out_dir: pathlib.Path, draws: int = 1) -> dict:
     from scripts.evaluate import load_split
     from src.analysis import position_errors as pe
     from src.eval import asr
+    from src.export.synthesize import draw_seed as synth_seed
     from src.export.synthesize import load, read_manifest
     from src.g2p import G2P
 
@@ -99,42 +100,127 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     if limit:
         rows_in = rows_in[:limit]
 
-    per_utt, parts, failures, pairs = [], [], [], []
-    for i, row in enumerate(rows_in, 1):
-        try:
-            sp = b.synthesize(row["text"])
-            if sp.waveform is None:
-                failures.append({"id": row["id"],
-                                 "error": "no waveform from this bundle"})
-                continue
-            hyp = engine.transcribe(sp.waveform, sr)
-            part = pe.partition(g2p, row["text"], hyp)
-            parts.append(part)
-            pairs.append((row["text"], hyp))
-            per_utt.append({
-                "id": row["id"],
-                "reference": row["text"],
-                "hypothesis": hyp,
-                "cer": asr.cer(row["text"], hyp),
-                "cer_with_spaces": asr.cer(row["text"], hyp, drop_spaces=False),
-                "wer": asr.wer(row["text"], hyp),
-                "insertions": part["insertions"],
-                **{f"{c}_edits": part["rates"][c].edits for c in pe.CLASSES},
-                **{f"{c}_chars": part["rates"][c].chars for c in pe.CLASSES},
-            })
-        except Exception as exc:                              # noqa: BLE001
-            failures.append({"id": row["id"],
-                             "error": f"{type(exc).__name__}: {exc}"})
-            if len(failures) <= 2:
-                traceback.print_exc()
-        if i % 10 == 0:
-            print(f"    {rid}/{backend_name}: {i}/{len(rows_in)}", flush=True)
+    failures: list[dict] = []
+    # One pass per draw. VITS samples at inference, so a single draw is
+    # reproducible once seeded (see synthesize.draw_seed) but it is not the
+    # system: the system is a distribution over draws. With --draws > 1 the
+    # spread across draws is reported as its own number, which is the
+    # inference-side counterpart of the seed-variance floor. Measured on
+    # 3 October, two unseeded passes over the same ten utterances moved r05's
+    # medial-site errors from 16 of 96 characters to 5 and reversed the sign
+    # of the headline contrast, so this is not a refinement.
+    passes = []
+    for d in range(max(1, int(draws))):
+        per_utt, parts, pairs = [], [], []
+        for i, row in enumerate(rows_in, 1):
+            try:
+                sp = b.synthesize(row["text"], draw=d)
+                if sp.waveform is None:
+                    failures.append({"id": row["id"], "draw": d,
+                                     "error": "no waveform from this bundle"})
+                    continue
+                hyp = engine.transcribe(sp.waveform, sr)
+                part = pe.partition(g2p, row["text"], hyp)
+                parts.append(part)
+                pairs.append((row["text"], hyp))
+                per_utt.append({
+                    "id": row["id"],
+                    "draw": d,
+                    "seed": synth_seed(rid, row["text"], d),
+                    "reference": row["text"],
+                    "hypothesis": hyp,
+                    "cer": asr.cer(row["text"], hyp),
+                    "cer_with_spaces": asr.cer(row["text"], hyp,
+                                               drop_spaces=False),
+                    "wer": asr.wer(row["text"], hyp),
+                    "insertions": part["insertions"],
+                    **{f"{c}_edits": part["rates"][c].edits for c in pe.CLASSES},
+                    **{f"{c}_chars": part["rates"][c].chars for c in pe.CLASSES},
+                })
+            except Exception as exc:                          # noqa: BLE001
+                failures.append({"id": row["id"], "draw": d,
+                                 "error": f"{type(exc).__name__}: {exc}"})
+                if len(failures) <= 2:
+                    traceback.print_exc()
+            if i % 10 == 0:
+                print(f"    {rid}/{backend_name} draw {d}: "
+                      f"{i}/{len(rows_in)}", flush=True)
+        if per_utt:
+            passes.append({"draw": d, "per_utt": per_utt,
+                           "parts": parts, "pairs": pairs})
 
     record["failures"] = failures
-    record["n"] = len(per_utt)
-    if not per_utt:
+    record["draws"] = len(passes)
+    if not passes:
+        record["n"] = 0
         record["skipped"] = "nothing transcribed; see failures"
         return record
+    record["n"] = len(passes[0]["per_utt"])
+
+    # Per draw first, so the spread is computable, then the mean across draws
+    # is what the table prints. A mean with no spread beside it is what the
+    # 3 October tables were, and they disagreed with each other.
+    per_draw = []
+    for pz in passes:
+        pooled = pe.accumulate(pz["parts"])
+        per_draw.append({
+            "draw": pz["draw"],
+            "corpus_cer": asr.corpus_cer(pz["pairs"]),
+            "classes": {c: (pooled["rates"][c].cer
+                            if pooled["rates"][c].has_rate else None)
+                        for c in pe.CLASSES},
+            "contrast": pe.contrast(pooled),
+            "insertions": pooled["insertions"],
+        })
+    record["per_draw"] = per_draw
+
+    def _mean(vals):
+        vals = [v for v in vals if v is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    def _sd(vals):
+        vals = [v for v in vals if v is not None]
+        if len(vals) < 2:
+            return None
+        m = sum(vals) / len(vals)
+        return (sum((v - m) ** 2 for v in vals) / (len(vals) - 1)) ** 0.5
+
+    # The pooled counts are taken over every draw, so the character
+    # denominators in the counts table are draws x characters and the rate is
+    # the pooled rate rather than a mean of rates.
+    pooled_all = pe.accumulate([q for pz in passes for q in pz["parts"]])
+    all_pairs = [q for pz in passes for q in pz["pairs"]]
+    record["corpus_cer"] = asr.corpus_cer(all_pairs)
+    record["corpus_cer_sd"] = _sd([d["corpus_cer"] for d in per_draw])
+    record["corpus_cer_with_spaces"] = asr.corpus_cer(all_pairs,
+                                                      drop_spaces=False)
+    record["classes"] = {
+        c: {"edits": pooled_all["rates"][c].edits,
+            "chars": pooled_all["rates"][c].chars,
+            "words": pooled_all["rates"][c].words,
+            "cer": (pooled_all["rates"][c].cer
+                    if pooled_all["rates"][c].has_rate else None),
+            "cer_sd": _sd([d["classes"][c] for d in per_draw])}
+        for c in pe.CLASSES}
+    record["contrast"] = pe.contrast(pooled_all)
+    for cls in (pe.FINAL, pe.MEDIAL):
+        vals = [(d["contrast"] or {}).get(cls, {}) for d in per_draw]
+        xs = [v.get("excess") for v in vals if v]
+        if record["contrast"].get(cls) and xs:
+            record["contrast"][cls]["excess_sd"] = _sd(xs)
+            record["contrast"][cls]["excess_mean_over_draws"] = _mean(xs)
+    record["insertions"] = pooled_all["insertions"]
+
+    # Kept on the record so the two arms of a pair can be resampled together.
+    # Only the FIRST draw, because the paired bootstrap needs one row per
+    # utterance per arm and draws are not utterances.
+    record["utterances"] = passes[0]["per_utt"]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / f"intel_{rid}_{backend_name}.json").write_text(
+        json.dumps({**record,
+                    "utterances": [u for pz in passes for u in pz["per_utt"]]},
+                   indent=1, ensure_ascii=False), encoding="utf-8")
+    return record
 
     pooled = pe.accumulate(parts)
     record["corpus_cer"] = asr.corpus_cer(pairs)
@@ -382,8 +468,8 @@ def bootstrap_table(records: list[dict], n_boot: int, seed: int) -> str:
 
 def table(records: list[dict]) -> str:
     head = (f"{'run':5s} {'arch':12s} {'repr':9s} {'asr':15s} {'n':>4s} "
-            f"{'CER':>7s} {'final':>7s} {'medial':>7s} {'none':>7s} "
-            f"{'excess':>8s} {'ins':>5s}")
+            f"{'dr':>3s} {'CER':>7s} {'+-':>7s} {'final':>7s} {'medial':>7s} "
+            f"{'none':>7s} {'excess':>8s} {'exc+-':>7s} {'ins':>5s}")
     lines = [head, "-" * len(head)]
     for r in records:
         if r.get("skipped"):
@@ -396,9 +482,12 @@ def table(records: list[dict]) -> str:
         lines.append(
             f"{r['run_id']:5s} {r['architecture']:12s} {r['input_repr']:9s} "
             f"{r['asr'].split('/')[-1][:15]:15s} {r['n']:4d} "
-            f"{_fmt(r['corpus_cer']):>7s} {_fmt(cls['final']['cer']):>7s} "
+            f"{r.get('draws', 1):3d} "
+            f"{_fmt(r['corpus_cer']):>7s} {_fmt(r.get('corpus_cer_sd')):>7s} "
+            f"{_fmt(cls['final']['cer']):>7s} "
             f"{_fmt(cls['medial']['cer']):>7s} {_fmt(cls['neither']['cer']):>7s} "
-            f"{_fmt(con['excess'] if con else None):>8s} {r['insertions']:5d}")
+            f"{_fmt(con['excess'] if con else None):>8s} "
+            f"{_fmt((con or {}).get('excess_sd')):>7s} {r['insertions']:5d}")
     return "\n".join(lines)
 
 
@@ -420,6 +509,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the ground-truth pass. The synthesis numbers "
                          "then have no denominator, so this is for debugging "
                          "only")
+    ap.add_argument("--draws", type=int, default=1,
+                    help="synthesis draws per utterance. VITS samples at "
+                         "inference, so one seeded draw is reproducible but "
+                         "is not the system; >1 reports the spread across "
+                         "draws, which on 10 utterances reversed the sign of "
+                         "the headline contrast on 3 October")
     ap.add_argument("--boot", type=int, default=2000,
                     help="paired resamples for the interval; 0 skips it")
     ap.add_argument("--boot-seed", type=int, default=0)
@@ -482,7 +577,8 @@ def main(argv: list[str] | None = None) -> int:
         for d in dirs:
             try:
                 records.append(score_bundle(d, a.lang, name, a.split,
-                                            a.limit, a.device, out_dir))
+                                            a.limit, a.device, out_dir,
+                                            draws=a.draws))
             except Exception as exc:                          # noqa: BLE001
                 traceback.print_exc()
                 records.append({"run_id": d.name, "skipped":
@@ -504,6 +600,12 @@ def main(argv: list[str] | None = None) -> int:
     print(table(records))
     print()
     print(counts_table(records))
+    if a.draws < 2 and any(r.get("architecture") == "vits" for r in records):
+        print()
+        print("NOTE: --draws 1. VITS samples at inference, so these numbers "
+              "are one reproducible draw and carry no spread. Two unseeded "
+              "passes on 3 October reversed the sign of the medial contrast. "
+              "Use --draws 5 or more before reporting any of this.")
     boot = ""
     if a.boot:
         boot = bootstrap_table(records, a.boot, a.boot_seed)

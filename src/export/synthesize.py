@@ -53,6 +53,23 @@ END_TO_END = ("vits",)
 
 SUPPORTED_BUNDLE_VERSION = 3
 
+# How a synthesis draw is seeded. Keyed on the run, the text and the draw
+# index, so an utterance's audio does not depend on how many utterances came
+# before it and scoring a subset reproduces the full set's audio exactly.
+SEED_SALT = "indic-tts-bench/synthesis/v1"
+
+
+def draw_seed(run_id: str, text: str, draw: int = 0) -> int:
+    """A reproducible 63-bit seed for one (run, text, draw).
+
+    sha256 rather than hash(), because Python salts str hashing per process
+    and a per-process seed would make every re-run a different measurement,
+    which is the defect this exists to close.
+    """
+    key = f"{SEED_SALT}|{run_id}|{draw}|{text}".encode("utf-8")
+    import hashlib
+    return int.from_bytes(hashlib.sha256(key).digest()[:8], "big") >> 1
+
 
 @dataclass
 class Speech:
@@ -184,7 +201,37 @@ class Bundle:
             raise SystemExit(f"{self.root}: this bundle has no text front end")
         return self.encoder.tokens(text)
 
-    def synthesize(self, text: str) -> Speech:
+    def synthesize(self, text: str, draw: int = 0,
+                   seed: int | None = None) -> Speech:
+        """Synthesise `text`, reproducibly.
+
+        **Why this takes a seed.** VITS samples: its stochastic duration
+        predictor and its flow both draw noise at inference, so two calls on
+        the same text give two different utterances. Measured on 3 October by
+        running scripts/score_intelligibility.py twice with identical
+        arguments, code, weights and ten utterances: the character error rate
+        of r05 under IndicConformer moved from 0.1330 to 0.1478, its
+        medial-site errors fell from 16 of 96 characters to 5, and the
+        medial-site excess that the two recognisers had agreed on at +0.1147
+        and +0.1150 came back as -0.0569 and +0.0661, reversing sign on one of
+        them. The ground-truth floor was byte-identical across both passes,
+        because it reads fixed files. An unseeded measurement of a sampling
+        model is not a measurement of the model; it is one draw from it.
+
+        The seed is derived from the text and the draw index rather than taken
+        from a global RNG, so one utterance's result does not depend on how
+        many utterances were synthesised before it, and a re-run of a subset
+        reproduces the same audio as the full set. `draw` selects which sample,
+        so a caller that wants the distribution asks for several and reports
+        the spread; the default of 0 is one fixed, reproducible draw rather
+        than a claim that one draw is enough.
+
+        A deterministic architecture ignores all of this, which is why the
+        seeding is unconditional: it costs nothing there and removes a
+        difference between architectures that is otherwise silent.
+        """
+        import hashlib
+
         import numpy as np
         import torch
 
@@ -196,6 +243,12 @@ class Bundle:
         toks = self.encoder.tokens(text)
         ids = self.encoder.encode(text)
         x = torch.LongTensor([ids]).to(self.device)
+
+        if seed is None:
+            seed = draw_seed(self.manifest["run_id"], text, draw)
+        torch.manual_seed(seed)
+        if self.device.type == "cuda":
+            torch.cuda.manual_seed_all(seed)
 
         t0 = time.perf_counter()
         with torch.no_grad():

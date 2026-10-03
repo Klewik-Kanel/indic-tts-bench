@@ -130,11 +130,36 @@ def test_both_is_the_default_backend_and_resolves_to_two():
 
 def test_no_number_in_the_harness_combines_the_two_recognisers():
     """Averaging them would hide the instrument-dependence that is the reason
-    for having two."""
+    for having two.
+
+    Checked structurally rather than by looking for the word "mean", which
+    gave a false positive once the across-DRAWS average was added: that one
+    averages inside a single recogniser's record, which is the point of it.
+    What must hold is that every number is scoped to one backend.
+    """
+    # Every record carries exactly one backend, and the pairing refuses to
+    # cross them (see test_pairing_does_not_cross_recognisers).
+    utts = [{"id": "u1"}]
+    a = _rec("r02", "phoneme", asr="ai4bharat/x", utts=utts)
+    b = _rec("r05", "grapheme", asr="facebook/y", utts=utts)
+    assert mod.pair_records([a, b]) == []
+
+    # And the table prints one row per record rather than merging them.
+    rows = mod.table([a, b]).splitlines()[2:]
+    assert len(rows) == 2
+    assert "ai4bharat" not in rows[1] and "facebook" not in rows[0]
+
+
+def test_the_across_draw_average_stays_inside_one_record():
+    """The only averaging in the harness is over draws of one run under one
+    recogniser. If it ever spanned records, two systems or two instruments
+    would be silently pooled."""
     import pathlib
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
-    for bad in ("mean(", "statistics.mean", "+ mms", "avg"):
-        assert bad not in src, f"found {bad!r}: the backends must stay separate"
+    body = src[src.index("def score_bundle("):src.index("def reference_floor(")]
+    assert "_mean(" in body, "the draw average lives in score_bundle"
+    after = src[src.index("def reference_floor("):]
+    assert "_mean(" not in after, "no averaging outside one run's record"
 
 
 # --- bundle selection -------------------------------------------------------
