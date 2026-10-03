@@ -139,8 +139,19 @@ class G2P:
         Combining marks stay attached to nothing: each Unicode character is one
         token. That is the usual grapheme baseline, and it is what a model
         trained on raw text would see.
+
+        Numbers are expanded first, exactly as `phonemize` does. This is not a
+        convenience: `normalize` runs `devanagari_digits_to_ascii`, and the
+        grapheme inventory is the U+0900 block plus punctuation, so an ASCII
+        digit is outside it by construction. Leaving the expansion out raised
+        on the first Marathi transcript containing a numeral, and, worse, meant
+        the phoneme arm heard a spoken number while this arm saw a digit glyph.
+        The two arms must be handed the same string or the ablation measures
+        the front end.
         """
-        text = _norm.normalize(text)
+        text, unexpanded = _expand_numbers(_norm.normalize(text), self.language)
+        if unexpanded:
+            self.unexpanded_numbers.extend(unexpanded)
         out: list[str] = []
         for i, word in enumerate(text.split()):
             if i > 0 and out:

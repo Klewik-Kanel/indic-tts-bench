@@ -1116,3 +1116,85 @@ No change. It applies identically to both arms of every comparison, so no
 contrast is affected, and changing it now would break comparability with the
 ladder runs still to come. Recorded because a reader finding 1139x in a log
 later deserves to know it was looked at.
+
+## 2026-10-03 — the grapheme arm never expanded numbers
+
+r02 and r05 finished and the queue did not advance. Two separate bugs, found
+one behind the other.
+
+**The chain stalled on a shell idiom.** `ours_running()` was
+
+    pgrep -cf "src\.train\.launch" 2>/dev/null || echo 0
+
+`pgrep -c` prints its count on stdout *and* exits 1 when the count is zero. So
+on no match the variable held two lines, `0\n0`, and the `-eq 0` guard in
+`wait_for_our_runs` errored instead of returning true. The condition could
+never be satisfied, so the loop would have spun for its full 30 h budget and
+then given up. It only appeared now because while r02 and r05 were alive
+`pgrep -c` printed `2` and exited 0, so the `echo 0` never fired: the guard
+inverted the moment the pair finished. `scripts/gpu_free.sh` had the same line,
+where the two-line value reached `$(( ))`. Both are `|| true` now.
+
+**Then r18 died at step 1.**
+
+    KeyError: symbol '8' is not in the 136-symbol vocabulary;
+              the front end and the vocabulary have diverged
+
+`normalize` runs `devanagari_digits_to_ascii`, turning १८ into `1`, `8`.
+`grapheme_inventory` is the U+0900 block plus punctuation and the word
+boundary, and it does contain Devanagari ०–९ at U+0966–U+096F, but ASCII
+digits are outside the block. `phonemize` expanded numbers before tokenising;
+`graphemes` did not. One missing call.
+
+The crash is the smaller half. For every utterance containing a numeral the
+phoneme arm received a spoken number and the grapheme arm received a digit
+glyph, so the phoneme-versus-grapheme contrast was absorbing a front-end
+difference. That is exactly what `src/train/text.py` says it is built to
+prevent: *"If the two arms built their vocabularies differently [...] the
+comparison would measure bookkeeping rather than linguistics."*
+
+**Scope, measured over the full manifests.**
+
+    language   utterances   digit runs (by length)   grapheme OOV   phoneme OOV
+    hindi           5,485   none                     0              0
+    marathi         5,559   19  (9x1, 6x2, 3x3, 1x4) 27 utt. max    0
+
+Hindi contains no digits at all, so r01, r04, r07 and r08 cannot have been
+affected and their provenance stands. In Marathi the affected utterances are at
+most 27 of 5,559, which is 0.486%. The phoneme arm is clean on the real data,
+so r15 was correct as it ran and did not need restarting.
+
+**The fix.** `graphemes` now calls `_expand_numbers` exactly as `phonemize`
+does. `normalize` and `phonemize` are deliberately untouched, which makes the
+phoneme path byte-identical rather than merely verified-equal, and keeps the
+vocabulary at 136 symbols so r18 requeues with the embedding table r04 already
+trained. Widening the inventory to admit ASCII digits was the obvious
+alternative and was rejected: r04 is a finished Hindi grapheme run on 136
+symbols, and putting Marathi grapheme on a larger table would place a table-size
+difference on the language axis.
+
+`scripts/check_text_coverage.py` now asserts that front-end output lies inside
+the vocabulary, for each (language, input_repr) pair, from the manifests. It is
+four checks for eighteen runs because coverage depends on nothing else. The
+point is where it fails: `Vocab.encode` raises rather than substituting `<unk>`,
+which is the right choice, but it raises inside `collate` on the prefetch thread
+at step 1, so the cost of finding out was a spent pair slot. Now it is seconds.
+
+    hindi/phoneme     5485 utterances,  78-symbol vocabulary, 0 OOV
+    hindi/grapheme    5485 utterances, 136-symbol vocabulary, 0 OOV
+    marathi/phoneme   5559 utterances,  78-symbol vocabulary, 0 OOV
+    marathi/grapheme  5559 utterances, 1 distinct OOV symbol
+
+**One OOV symbol is left, and it is a data question.** `ma_007005` reads
+
+    सध्या या सर्व गोष्टीzबरोबरच फायबर ग्लासचाही मोठ्या प्रमाणावर उपयोग केला जातो.
+
+A Latin `z` sits inside a Devanagari word. The phoneme arm never noticed because
+the phonemiser maps it to something inside the phoneme inventory. [Inference]
+From the surrounding grammar the word is गोष्टींबरोबरच, which would make the `z`
+a slip for anusvara U+0902; that reading is not stated anywhere in the data, so
+adding it to `TYPO_MAP` is a transcript edit on a guess and is left for Kaustubh
+rather than made here. `TYPO_MAP` already carries comparable documented repairs
+(आॅ → ऑ, ऱ → र, seven southern short vowels), so the mechanism and the
+precedent exist. Until it is decided, marathi/grapheme fails preflight, which
+blocks r18 and r19 and nothing else.

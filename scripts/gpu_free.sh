@@ -17,7 +17,7 @@ set -uo pipefail
 
 check() {
   local ours oncard others total used free util temp rows
-  ours=$(pgrep -cf "src\.train\.launch" 2>/dev/null || echo 0)
+  ours=$(pgrep -cf "src\.train\.launch" 2>/dev/null || true)
   rows=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader 2>/dev/null)
   oncard=$(printf '%s\n' "$rows" | grep -c . || true)
   others=$(( oncard - ours ))

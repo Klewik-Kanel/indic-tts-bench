@@ -51,7 +51,7 @@ finished() {
   return 1
 }
 
-ours_running() { pgrep -cf "src\.train\.launch" 2>/dev/null || echo 0; }
+ours_running() { pgrep -cf "src\.train\.launch" 2>/dev/null || true; }
 
 on_card() {
   nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | grep -c . || true
