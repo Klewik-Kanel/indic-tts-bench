@@ -155,6 +155,42 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     return record
 
 
+def _select(dirs: list[pathlib.Path], wanted: list[str]) -> list[pathlib.Path]:
+    """Bundles named by directory name OR by run_id.
+
+    A bundle directory is `r02_step100000` while the run is `r02`, and the run
+    id is what a person thinks in. Matching only the directory name turned
+    `--runs r02 r05` into "no bundles found", which reads as a missing export
+    rather than a filter that matched nothing. Both spellings work now, and an
+    unmatched name is named along with what is actually on disk instead of
+    being silently dropped.
+    """
+    from src.export.synthesize import read_manifest
+
+    by_name: dict[str, pathlib.Path] = {}
+    for d in dirs:
+        by_name[d.name] = d
+        try:
+            rid = read_manifest(d)["run_id"]
+        except SystemExit:
+            continue
+        # A directory name is never overwritten by a run id, so an exact
+        # directory match always wins.
+        by_name.setdefault(rid, d)
+
+    out, missing = [], []
+    for w in wanted:
+        d = by_name.get(w)
+        if d is None:
+            missing.append(w)
+        elif d not in out:
+            out.append(d)
+    if missing:
+        print(f"no bundle for {missing}; on disk: "
+              f"{sorted(d.name for d in dirs)}", file=sys.stderr)
+    return out
+
+
 def _fmt(v, nd=4):
     return "-" if v is None else f"{v:.{nd}f}"
 
@@ -189,7 +225,8 @@ def main(argv: list[str] | None = None) -> int:
                     choices=["indicconformer", "mms", "both"])
     ap.add_argument("--exports", default=str(HERE / "exports"))
     ap.add_argument("--runs", nargs="*", default=None,
-                    help="bundle directory names; default is all of them")
+                    help="run ids (r02) or bundle directory names "
+                         "(r02_step100000); default is all of them")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--device", default="cpu")
@@ -208,12 +245,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     dirs = sorted(d for d in root.iterdir() if d.is_dir()
                   and (d / "manifest.json").exists())
-    if a.runs:
-        wanted = set(a.runs)
-        dirs = [d for d in dirs if d.name in wanted]
     if not dirs:
         print(f"no bundles found under {root}", file=sys.stderr)
         return 1
+    if a.runs:
+        dirs = _select(dirs, a.runs)
+        if not dirs:
+            return 1
 
     out_dir = pathlib.Path(a.out)
     records = []

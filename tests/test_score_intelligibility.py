@@ -135,3 +135,62 @@ def test_no_number_in_the_harness_combines_the_two_recognisers():
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
     for bad in ("mean(", "statistics.mean", "+ mms", "avg"):
         assert bad not in src, f"found {bad!r}: the backends must stay separate"
+
+
+# --- bundle selection -------------------------------------------------------
+
+def _fake_bundle(tmp, dirname, run_id):
+    import json
+    d = pathlib.Path(tmp) / dirname
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({
+        "bundle_version": 3, "run_id": run_id, "architecture": "vits",
+        "language": "hindi", "input_repr": "phoneme", "sample_rate": 22050,
+    }), encoding="utf-8")
+    return d
+
+
+def test_runs_accepts_a_run_id_not_only_a_directory_name():
+    """`--runs r02` must find exports/r02_step100000.
+
+    This failed once and read as a missing export rather than a filter that
+    matched nothing, which cost a round trip to the box.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        a = _fake_bundle(tmp, "r02_step100000", "r02")
+        b = _fake_bundle(tmp, "r05_step100000", "r05")
+        assert mod._select([a, b], ["r02"]) == [a]
+        assert mod._select([a, b], ["r02", "r05"]) == [a, b]
+
+
+def test_runs_still_accepts_the_directory_name():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        a = _fake_bundle(tmp, "r02_step100000", "r02")
+        assert mod._select([a], ["r02_step100000"]) == [a]
+
+
+def test_an_unmatched_name_is_reported_with_what_is_on_disk(capsys=None):
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        a = _fake_bundle(tmp, "r02_step100000", "r02")
+        assert mod._select([a], ["r99"]) == []
+
+
+def test_a_name_given_twice_selects_the_bundle_once():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        a = _fake_bundle(tmp, "r02_step100000", "r02")
+        assert mod._select([a], ["r02", "r02_step100000"]) == [a]
+
+
+def test_an_exact_directory_name_wins_over_a_run_id_collision():
+    """A directory literally called `r02` must not be shadowed by another
+    bundle whose manifest says run_id r02."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        exact = _fake_bundle(tmp, "r02", "r02")
+        other = _fake_bundle(tmp, "r02_step100000", "r02")
+        assert mod._select([exact, other], ["r02"]) == [exact]
+        assert mod._select([other, exact], ["r02"]) == [exact]
