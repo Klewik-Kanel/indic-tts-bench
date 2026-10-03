@@ -37,3 +37,9 @@ jobs/*/output/
 
 # bundles are reproducible from runs/ and live on the Hub
 exports/
+
+# The static demo's audio is the deliverable, not a build artefact: a Static
+# Space serves files and runs nothing, so these have to be in the repo. They
+# are small (16 kHz mono PCM, a few seconds each) and regenerable with
+# scripts/render_demo.py.
+!space_static/audio/**/*.wav

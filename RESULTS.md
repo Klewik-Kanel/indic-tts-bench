@@ -1289,3 +1289,67 @@ waveform.
 enters the inference graph, but carrying the real value is better than having
 the synthesis module invent a number that then reads as a hyperparameter.
 Nothing needed re-exporting, since no bundle had been produced yet.
+
+## 2026-10-03 — the demo set is selected by rule, not by ear
+
+Hugging Face restricted free `cpu-basic` Spaces in July 2026: Gradio and Docker
+Spaces on the free tier now require PRO, Static Spaces stay free. So the
+permanent artifact is a Static Space with pre-rendered audio, and the Gradio app
+stays in the repo for a notebook when free text is wanted live. The static route
+is not a consolation: a fixed, pre-registered sentence set is what a listening
+test requires, so this is work the dissertation needed anyway.
+
+**The selection rule.** Two properties pull against each other. The sentences
+must come from the held-out dev split, so nobody can say the demo was picked to
+flatter a model; and they must actually exercise schwa deletion, or the
+demonstration shows nothing about the claim. Hand-written sentences would get the
+second and lose the first.
+
+So: dev split only, filtered to 1.5–6.0 s, banded by **medial** schwa deletion
+count (none / one / few=2–3 / many=4+), taken round-robin from the richest band
+down, sorted by utterance id inside each band. Deterministic given the split.
+The rule, the band sizes and every per-sentence count are written to
+`results/tables/demo_set_hindi.json` so the choice can be checked rather than
+trusted.
+
+Word-final deletion is counted but never selected on. It is near-categorical in
+Hindi and both arms learn it, so a set chosen on total deletion sites would be a
+set chosen on the easy case. Medial deletion is the conditioned one, and the
+place the arms should come apart if the phonemic front end is earning its place.
+
+**What Hindi dev yields.** 100 utterances, 47 inside the length window:
+
+    band            in window
+    many (4+)               5
+    few  (2-3)             20
+    one                    13
+    none                    9
+
+The twelve chosen span 6 medial sites down to 0. The three with no medial
+deletion are the control: if both arms handle those and diverge on the heavy
+ones, that is the claim showing up in audio rather than in a table. If they
+diverge everywhere, the gap is about something else.
+
+**Deletion sites came from the training path, not a reimplementation.**
+`delete_schwas` has always returned the indices it deleted, and `phonemize_word`
+discarded them. That function is refactored into
+`_phonemize_word_with_sites`, with `phonemize_word` and a new `deletion_sites`
+both calling it, so there is no second copy of the punctuation-and-lexicon
+handling to drift away from what trained six runs. All 65 existing G2P tests
+pass unchanged, which is the point of doing it that way; 176 assertions pass in
+total across the torch-free suites.
+
+A lexicon hit reports zero sites, because no rule ran — the true answer, not a
+missing one. Sites index the core word's pre-deletion segments, so a trailing
+comma cannot shift them, which matters given `phonemize_word`'s own docstring
+about punctuation changing schwa context.
+
+**The natural recording ships alongside the arms**, at each arm's sample rate.
+Without it the question is only "which of these two do you prefer", which is
+much weaker than "how far is each from the speaker", and it is the reference an
+AB or MOS test needs. Mel-only architectures write no audio at all rather than a
+Griffin-Lim stand-in, and the page says they are silent and why.
+
+The page marks the words where medial deletion applies, so a listener knows
+where to attend, and prints each clip's run id, step, config hash and git commit
+beside it.

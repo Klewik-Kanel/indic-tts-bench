@@ -1,0 +1,192 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Indic TTS benchmark</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #ffffff; --line: #e3ded6; --ink: #1c1a17;
+    --muted: #6f685e; --accent: #7b4b2a; --mark: #f2e4d2; --ref: #2f5d50;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --deva: "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161513; --panel: #1f1d1a; --line: #332f2a;
+      --ink: #ece7df; --muted: #9c9386; --accent: #d79a6a; --mark: #3a2e22;
+      --ref: #7fbfa9;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, Segoe UI, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 16px 96px; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .4em; letter-spacing: -.02em; }
+  h2 { font-size: 1.05rem; margin: 3em 0 1em; text-transform: uppercase;
+       letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  p { margin: 0 0 1em; max-width: 64ch; }
+  .lede { font-size: 1.07rem; color: var(--ink); }
+  .deva { font-family: var(--deva); }
+  code, .tok { font-family: var(--mono); font-size: .86em; }
+  a { color: var(--accent); }
+
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 10px; padding: 20px; margin: 0 0 18px; }
+  .sent { font-family: var(--deva); font-size: 1.3rem; line-height: 1.75;
+          margin: 0 0 4px; }
+  .sent mark { background: var(--mark); color: inherit; padding: 0 .12em;
+               border-radius: 3px; }
+  .meta { color: var(--muted); font-size: .84rem; margin-bottom: 16px; }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  .arm { display: grid; grid-template-columns: 148px 1fr; gap: 14px;
+         align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+  .arm:first-of-type { border-top: 0; }
+  .name { font-size: .88rem; font-weight: 600; }
+  .name small { display: block; font-weight: 400; color: var(--muted);
+                font-size: .8rem; }
+  .arm.is-ref .name { color: var(--ref); }
+  audio { width: 100%; height: 34px; }
+  .tok { color: var(--muted); margin-top: 7px; word-break: break-word; }
+  .silent { color: var(--muted); font-size: .86rem; font-style: italic; }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+         margin: 0 0 22px; }
+  button { font: inherit; font-size: .85rem; padding: 6px 12px; cursor: pointer;
+           background: var(--panel); color: var(--ink);
+           border: 1px solid var(--line); border-radius: 999px; }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--bg);
+                                border-color: var(--ink); }
+  .note { color: var(--muted); font-size: .86rem; }
+  dl { margin: 0; } dt { font-weight: 600; margin-top: .8em; }
+  dd { margin: 0; color: var(--muted); }
+  @media (max-width: 560px) {
+    .arm { grid-template-columns: 1fr; gap: 6px; }
+  }
+</style>
+
+<div class="wrap">
+  <h1>Phonemic or graphemic input?</h1>
+  <p class="lede">Devanagari does not write schwa deletion. <span class="deva">नमक</span>
+  is spoken <i>namak</i>, not <i>namaka</i>, and nothing in the spelling says so.
+  One arm below is handed the deletion by a rule-based front end. The other reads
+  the characters and has to work it out. Everything else about the two is the
+  same: architecture, seed, corpus, step budget.</p>
+  <p>Each sentence carries the natural recording as well, so the question can be
+  how far each arm is from the speaker rather than only which arm you prefer.
+  Sentences are from the held-out split, which no model trained on, and the
+  highlighted words are the ones where medial schwa deletion applies.</p>
+
+  <div class="bar" id="bar"></div>
+  <div id="list"></div>
+
+  <h2>How these sentences were chosen</h2>
+  <p id="criterion" class="note"></p>
+
+  <h2>What you are hearing</h2>
+  <dl id="runs"></dl>
+  <p class="note" id="footer"></p>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+let DATA = null, filter = "all";
+
+const esc = s => s.replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Mark the words where medial deletion applies, matching whole whitespace
+// tokens so a substring cannot highlight the wrong word.
+function marked(text, words) {
+  const want = new Set(words || []);
+  return text.split(/(\s+)/).map(part =>
+    want.has(part) ? `<mark>${esc(part)}</mark>` : esc(part)).join("");
+}
+
+function armRow(label, sub, src, tokens, isRef) {
+  const body = src
+    ? `<audio controls preload="none" src="${esc(src)}"></audio>`
+    : `<div class="silent">Silent: this architecture produces a mel
+       spectrogram and its vocoder is still training.</div>`;
+  const toks = tokens && tokens.length
+    ? `<div class="tok">${tokens.length} tokens · ${esc(tokens.join(" "))}</div>` : "";
+  return `<div class="arm${isRef ? " is-ref" : ""}">
+    <div class="name">${esc(label)}<small>${esc(sub)}</small></div>
+    <div>${body}${toks}</div></div>`;
+}
+
+function card(s) {
+  const rates = Object.keys(s.reference || {});
+  let rows = rates.map(r => armRow("Natural speech",
+    `the speaker, ${r} Hz`, s.reference[r], null, true)).join("");
+
+  for (const run of DATA.runs) {
+    const got = (s.runs || {})[run.run_id];
+    rows += armRow(run.run_id,
+      `${run.architecture}, ${run.input_repr}`,
+      got && got.audio, got && got.tokens, false);
+  }
+
+  const bits = [`<b>${s.medial}</b> medial`, `<b>${s.final}</b> word-final`,
+                `${s.words} words`, `${s.seconds.toFixed(2)} s`,
+                `<code>${esc(s.id)}</code>`];
+  return `<div class="card">
+    <div class="sent">${marked(s.text, s.medial_words)}</div>
+    <div class="meta">${bits.join(" · ")}</div>${rows}</div>`;
+}
+
+const BANDS = [
+  ["all", "All sentences", () => true],
+  ["many", "Heavy deletion (4+)", s => s.medial >= 4],
+  ["some", "Some deletion (1–3)", s => s.medial >= 1 && s.medial <= 3],
+  ["none", "No medial deletion", s => s.medial === 0],
+];
+
+function render() {
+  const keep = BANDS.find(b => b[0] === filter)[2];
+  const shown = DATA.sentences.filter(keep);
+  $("#list").innerHTML = shown.length
+    ? shown.map(card).join("")
+    : `<p class="note">No sentences in this band.</p>`;
+  for (const btn of document.querySelectorAll("#bar button"))
+    btn.setAttribute("aria-pressed", String(btn.dataset.band === filter));
+}
+
+function boot(data) {
+  DATA = data;
+  $("#bar").innerHTML = BANDS.map(([k, label, fn]) => {
+    const n = data.sentences.filter(fn).length;
+    return `<button data-band="${k}">${label} (${n})</button>`;
+  }).join("") + `<span class="note">Sentences with no medial deletion are the
+    control: both arms should cope.</span>`;
+  $("#bar").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    filter = b.dataset.band;
+    render();
+  });
+
+  $("#criterion").textContent = data.criterion || "";
+  $("#runs").innerHTML = data.runs.map(r => `
+    <dt>${esc(r.run_id)} — ${esc(r.describes || "")}</dt>
+    <dd>step ${esc(String(r.step))} · config <code>${esc(r.config_hash || "?")}</code>
+        · commit <code>${esc((r.git_commit || "?").slice(0, 10))}</code>
+        · ${esc(String(r.sample_rate))} Hz</dd>`).join("");
+  $("#footer").textContent =
+    `${data.sentences.length} sentences from the ${data.split} split, ` +
+    `${data.language}. Rendered ${data.generated_utc}. ` +
+    `Nine hours of single-speaker speech per arm at 100,000 steps: ` +
+    `neither arm is a product, and the difference between them is the point.`;
+  render();
+}
+
+fetch("data.json").then(r => {
+  if (!r.ok) throw new Error(`data.json: HTTP ${r.status}`);
+  return r.json();
+}).then(boot).catch(err => {
+  $("#list").innerHTML = `<div class="card"><b>Could not load data.json.</b>
+    <div class="note">${esc(String(err))} — run
+    <code>scripts/render_demo.py</code> and push the result.</div></div>`;
+});
+</script>

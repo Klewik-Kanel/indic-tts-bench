@@ -87,9 +87,28 @@ class G2P:
         phoneme arm alone, which is one half of the comparison this study
         exists to make.
         """
+        phones, _ = self._phonemize_word_with_sites(word)
+        return phones
+
+    def _phonemize_word_with_sites(self, word: str) -> tuple[list[str], list[int]]:
+        """The body of `phonemize_word`, keeping the deletion sites.
+
+        `delete_schwas` already returns which segment indices it deleted, and
+        the only reason that was unavailable outside this function was that it
+        was discarded here. Analysis needs the sites — selecting demo sentences
+        by how much schwa deletion they actually exercise, and scoring
+        predicted against gold deletion sites — and the one thing worse than
+        not having them is a second copy of this punctuation-and-lexicon
+        handling that can drift away from the path that trained the models.
+
+        Sites index the pre-deletion segments of the core word, so they are
+        comparable to `segments()` and unaffected by the punctuation peeled
+        off either end. A lexicon hit reports no sites, because no schwa rule
+        ran: that is the real answer, not a missing one.
+        """
         word = _norm.normalize(word)
         if not word:
-            return []
+            return [], []
 
         lead, core, trail = [], word, []
         while core and core[0] in PUNCTUATION:
@@ -99,13 +118,18 @@ class G2P:
             trail.insert(0, core[-1])
             core = core[:-1]
         if not core:
-            return lead + trail
+            return lead + trail, []
 
         if core in self.lexicon:
-            return lead + list(self.lexicon[core]) + trail
+            return lead + list(self.lexicon[core]) + trail, []
         segs = word_to_segments(core, merge_nukta=self.merge_nukta)
-        survivors, _ = delete_schwas(segs, self.schwa)
-        return lead + [s.phone for s in survivors if s.phone] + trail
+        survivors, deleted = delete_schwas(segs, self.schwa)
+        phones = lead + [s.phone for s in survivors if s.phone] + trail
+        return phones, deleted
+
+    def deletion_sites(self, word: str) -> list[int]:
+        """Which pre-deletion segment indices the schwa rules removed."""
+        return self._phonemize_word_with_sites(word)[1]
 
     def phonemize(self, text: str) -> list[str]:
         """Sentence to phones, with explicit word boundaries.

@@ -1,0 +1,209 @@
+{
+ "language": "hindi",
+ "split": "dev",
+ "criterion": "Held-out dev split only, so no run trained on these. Filtered to 1.5-6.0 s. Banded by medial schwa deletion count (none / one / few=2-3 / many=4+), taken round-robin from the richest band down, sorted by utterance id inside each band. Deterministic given the split. Word-final deletion is reported but not selected on, being near-categorical in Hindi.",
+ "window_seconds": [
+  1.5,
+  6.0
+ ],
+ "requested": 12,
+ "available": 100,
+ "in_window": 47,
+ "band_sizes": {
+  "many": 5,
+  "few": 20,
+  "one": 13,
+  "none": 9
+ },
+ "chosen": [
+  {
+   "id": "hi_005038",
+   "text": "आपातकाल के दौरान, यह सिलसिला कभी, थमता हुआ दिखलाई नहीं पड़ता है",
+   "seconds": 5.017,
+   "words": 12,
+   "final": 2,
+   "medial": 6,
+   "medial_words": [
+    "आपातकाल",
+    "दौरान,",
+    "सिलसिला",
+    "थमता",
+    "दिखलाई",
+    "पड़ता"
+   ],
+   "stratum": "many",
+   "in_window": true,
+   "wav22": "wav22/hi_005038.wav",
+   "wav16": "wav16/hi_005038.wav"
+  },
+  {
+   "id": "hi_004722",
+   "text": "कविता को, भाषिक व्यवहार का सबसे, करूणामयी अवयय बन जाना होता है",
+   "seconds": 5.369,
+   "words": 12,
+   "final": 4,
+   "medial": 4,
+   "medial_words": [
+    "व्यवहार",
+    "सबसे,",
+    "करूणामयी",
+    "अवयय"
+   ],
+   "stratum": "many",
+   "in_window": true,
+   "wav22": "wav22/hi_004722.wav",
+   "wav16": "wav16/hi_004722.wav"
+  },
+  {
+   "id": "hi_005547",
+   "text": "अभी कपडे नहीं बदले थे, अलबत्ता जूडे में बंधे हुए बालों को उसने, अवश्य खोल दिया था",
+   "seconds": 5.999,
+   "words": 17,
+   "final": 2,
+   "medial": 4,
+   "medial_words": [
+    "कपडे",
+    "बदले",
+    "अलबत्ता",
+    "उसने,"
+   ],
+   "stratum": "many",
+   "in_window": true,
+   "wav22": "wav22/hi_005547.wav",
+   "wav16": "wav16/hi_005547.wav"
+  },
+  {
+   "id": "hi_004738",
+   "text": "पहले, राजनीतिक कारणोँ की बात की जाये",
+   "seconds": 2.863,
+   "words": 7,
+   "final": 2,
+   "medial": 3,
+   "medial_words": [
+    "पहले,",
+    "राजनीतिक",
+    "कारणोँ"
+   ],
+   "stratum": "few",
+   "in_window": true,
+   "wav22": "wav22/hi_004738.wav",
+   "wav16": "wav16/hi_004738.wav"
+  },
+  {
+   "id": "hi_004665",
+   "text": "उनके स्वभाव में जो एक अजीब सा बेगानापन है, संकोच का ठहरा हुआ सा पर्दा है",
+   "seconds": 5.871,
+   "words": 16,
+   "final": 5,
+   "medial": 2,
+   "medial_words": [
+    "उनके",
+    "ठहरा"
+   ],
+   "stratum": "few",
+   "in_window": true,
+   "wav22": "wav22/hi_004665.wav",
+   "wav16": "wav16/hi_004665.wav"
+  },
+  {
+   "id": "hi_004766",
+   "text": "सी.बी.आई. को भी, उसके विरुद्ध, कोई प्रमाण नहीँ मिल पाये थे",
+   "seconds": 4.121,
+   "words": 11,
+   "final": 2,
+   "medial": 2,
+   "medial_words": [
+    "उसके",
+    "विरुद्ध,"
+   ],
+   "stratum": "few",
+   "in_window": true,
+   "wav22": "wav22/hi_004766.wav",
+   "wav16": "wav16/hi_004766.wav"
+  },
+  {
+   "id": "hi_004966",
+   "text": "कप्तानी के लिए ही पैदा हुए वॉन, फ़्लिंटाफ़",
+   "seconds": 3.023,
+   "words": 8,
+   "final": 1,
+   "medial": 1,
+   "medial_words": [
+    "वॉन,"
+   ],
+   "stratum": "one",
+   "in_window": true,
+   "wav22": "wav22/hi_004966.wav",
+   "wav16": "wav16/hi_004966.wav"
+  },
+  {
+   "id": "hi_005292",
+   "text": "सेठ का बडा बेटा, बहुत ही होनहार था",
+   "seconds": 2.809,
+   "words": 8,
+   "final": 3,
+   "medial": 1,
+   "medial_words": [
+    "होनहार"
+   ],
+   "stratum": "one",
+   "in_window": true,
+   "wav22": "wav22/hi_005292.wav",
+   "wav16": "wav16/hi_005292.wav"
+  },
+  {
+   "id": "hi_005886",
+   "text": "बायें पैर का उनका अंगूठा, रक्त सिक्त हो गया",
+   "seconds": 3.343,
+   "words": 9,
+   "final": 3,
+   "medial": 1,
+   "medial_words": [
+    "उनका"
+   ],
+   "stratum": "one",
+   "in_window": true,
+   "wav22": "wav22/hi_005886.wav",
+   "wav16": "wav16/hi_005886.wav"
+  },
+  {
+   "id": "hi_005009",
+   "text": "तेरे गिफ़्ट ने मेरा दिल जीत लिया",
+   "seconds": 2.127,
+   "words": 7,
+   "final": 3,
+   "medial": 0,
+   "medial_words": [],
+   "stratum": "none",
+   "in_window": true,
+   "wav22": "wav22/hi_005009.wav",
+   "wav16": "wav16/hi_005009.wav"
+  },
+  {
+   "id": "hi_006486",
+   "text": "सभी के सभी घर वाले टूट चुके थे और अभी तक वो संभल नहीं पाए थे.",
+   "seconds": 4.687,
+   "words": 16,
+   "final": 5,
+   "medial": 0,
+   "medial_words": [],
+   "stratum": "none",
+   "in_window": true,
+   "wav22": "wav22/hi_006486.wav",
+   "wav16": "wav16/hi_006486.wav"
+  },
+  {
+   "id": "hi_006650",
+   "text": "बूढ़े ने कहा, जाओ व्यापारी से माँगो, शायद कुछ खाने को दे दे.",
+   "seconds": 4.217,
+   "words": 13,
+   "final": 2,
+   "medial": 0,
+   "medial_words": [],
+   "stratum": "none",
+   "in_window": true,
+   "wav22": "wav22/hi_006650.wav",
+   "wav16": "wav16/hi_006650.wav"
+  }
+ ]
+}
