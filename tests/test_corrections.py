@@ -56,9 +56,13 @@ def test_editing_init_from_DOES_move_the_hash():
 
 
 def test_every_vits_run_carries_the_corrections():
-    """Including the six that have not started: they share the finding."""
+    """Including the ones that have not started, and the two seed-floor runs
+    added later: they share the finding because they share the adapter.
+
+    The count is asserted so that a VITS run added without corrections shows up
+    here rather than reaching the paper with only the false claim attached."""
     vits = [r for r in plan_runs() if r.architecture == "vits"]
-    assert len(vits) == 8
+    assert len(vits) == 10, [r.run_id for r in vits]
     for r in vits:
         assert r.corrections, r.run_id
         assert any("no warm start was ever implemented" in c for c in r.corrections), r.run_id

@@ -19,7 +19,12 @@ import pytest
 
 from src.train.config import COSMETIC, plan_runs
 
-SEEDS = {"r01": 0, "r20": 1, "r21": 2}
+# Two floors, because a floor is architecture-specific: r01's cell for
+# FastSpeech 2 and r02's for VITS. The VITS one matters more in practice, since
+# VITS is end to end and is the half that can be scored without a vocoder.
+FS2_SEEDS = {"r01": 0, "r20": 1, "r21": 2}
+VITS_SEEDS = {"r02": 0, "r22": 1, "r23": 2}
+SEEDS = FS2_SEEDS
 
 
 def by_id() -> dict:
@@ -72,7 +77,35 @@ def test_they_are_the_only_seeds_other_than_zero():
     """If a seed drifts into another run, the floor stops being a floor and the
     ladder starts mixing seed variance into its data trend."""
     off = {r.run_id: r.seed for r in plan_runs() if r.seed != 0}
-    assert off == {"r20": 1, "r21": 2}, off
+    assert off == {"r20": 1, "r21": 2, "r22": 1, "r23": 2}, off
+
+
+@pytest.mark.parametrize("rid", ["r22", "r23"])
+def test_the_vits_floor_differs_from_r02_only_in_the_seed(rid):
+    runs = by_id()
+    a = dataclasses.asdict(runs["r02"])
+    b = dataclasses.asdict(runs[rid])
+    differing = {k for k in a if a[k] != b[k]}
+    assert differing <= ({"seed"} | COSMETIC), differing
+    assert "seed" in differing
+
+
+def test_the_vits_floor_shares_r02s_rate_and_corrections():
+    """A floor measured at a different sample rate, or without the same
+    declared provenance, is not r02's floor."""
+    runs = by_id()
+    for rid in ("r22", "r23"):
+        assert runs[rid].sample_rate == runs["r02"].sample_rate
+        assert runs[rid].corrections == runs["r02"].corrections
+        assert runs[rid].init_from == runs["r02"].init_from
+
+
+def test_there_is_a_floor_for_each_architecture_being_compared():
+    """One floor does not cover two architectures. Reporting the VITS gap
+    against the FastSpeech 2 spread would be using the wrong ruler."""
+    runs = by_id()
+    assert {runs[r].architecture for r in FS2_SEEDS} == {"fastspeech2"}
+    assert {runs[r].architecture for r in VITS_SEEDS} == {"vits"}
 
 
 def test_the_pair_is_queued():
