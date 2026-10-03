@@ -1,0 +1,720 @@
+% =============================================================
+%  Springer LNCS conference draft
+%  Does Explicit Devanagari G2P Still Matter for Neural TTS?
+%
+%  Kaustubh Pandey (2025PA17326), M.Tech CSE (AI), NSUT
+%  Supervisor: Dr. Shobha Bhatt
+%
+%  Compile with XeLaTeX. Needs llncs.cls and splncs04.bst from
+%  Springer's author kit, plus the Devanagari font if the examples
+%  in Section 3.2 are kept.
+%
+%  Written in the first person to match the progress report. If the
+%  supervisor is a co-author, change every "I" to "we" and every
+%  "my" to "our" before submission.
+% =============================================================
+\documentclass[runningheads]{llncs}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \newcommand{\dev}[1]{\textit{#1}}
+\else
+  \usepackage{fontspec}
+  \newfontfamily\devfont{Noto Sans Devanagari}[Path=fonts/,
+    Extension=.ttf, UprightFont=NotoSansDevanagari-Regular]
+  \newcommand{\dev}[1]{{\devfont #1}}
+\fi
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{url}
+
+\begin{document}
+
+\title{Does Explicit Devanagari Grapheme-to-Phoneme Conversion
+Still Matter for Neural Text-to-Speech?}
+
+\titlerunning{Does Explicit Devanagari G2P Still Matter?}
+
+\author{Kaustubh Pandey\inst{1}\orcidID{0000-0000-0000-0000}}
+\authorrunning{K. Pandey}
+
+\institute{Netaji Subhas University of Technology, New Delhi, India\\
+\email{kaustubh.pandey.2025pa17326@nsut.ac.in}}
+
+\maketitle
+
+\begin{abstract}
+Devanagari does not write the inherent vowel it implies, so a phonemic front
+end for Hindi has to decide where that vowel is pronounced and where it is
+deleted. Writing such a front end is a month of work. Whether current neural
+architectures make it unnecessary has not been measured under controlled
+conditions, because published comparisons vary architecture, data, sampling
+rate, vocoder and front end at the same time. I report an in-progress
+testbed that varies only the input representation. Architecture, speaker,
+corpus, training budget, vocoder and evaluation protocol are held fixed by
+construction, with the budget enforced in mel frames so that no architecture
+can be given more audio than another, and with configuration hashes that make
+an unintended difference between two arms detectable rather than invisible. The
+design covers FastSpeech~2 and VITS on Hindi, a nested data ladder from nine
+hours to ten minutes, and Marathi as a same-script control in which medial
+schwa deletion does not apply. Twenty-two runs of 100{,}000 steps are planned,
+eight have completed and two are in training.
+
+Two results are already stable. First, mel-cepstral distortion cannot resolve
+this contrast at the quality level the budget affords: the two Hindi VITS arms
+sit 54.3\% and 55.4\% of the distance to unrelated audio and differ by 0.89\%
+of that distance, which is 0.31 standard deviations. I therefore introduce two
+measures that can. One regresses excess utterance duration on the number of
+rule-predicted deletion sites, giving milliseconds of excess per site, which
+needs no vocoder and cannot saturate. The other partitions character error
+rate from two independent connectionist temporal classification recognisers by
+whether the reference word carries a rule-predicted deletion, and reports it
+against the recogniser's own error rate on the real recordings. On the first
+ten test utterances, both recognisers agree that errors concentrate at
+\emph{medial} deletion sites for the graphemic arm and not for the phonemic
+arm, by 0.1147 and 0.1150 after floor correction, while at word-final sites
+the graphemic arm is marginally better. That split is what one would predict:
+final deletion is inferable from the orthography, medial deletion is not.
+Second, I document two measurement defects that silently invert conclusions,
+one in the training objective and one in the evaluation text pipeline, and
+give the diagnostic that exposes each.
+
+\keywords{Text-to-speech \and Grapheme-to-phoneme \and Hindi \and Schwa
+deletion \and Evaluation methodology \and Low-resource speech}
+\end{abstract}
+
+\section{Introduction}
+
+Devanagari underspecifies the vowel. A consonant letter carries an inherent
+\dev{अ}, and whether that vowel is pronounced depends on position, syllable
+weight and morphology. A phonemic front end must therefore decide where the
+schwa survives, and it will sometimes be wrong. Narasimhan et~al.
+\cite{narasimhan2004schwa} gave the classical rule for Hindi, deleting a
+medial schwa between two consonants that are themselves flanked by vowels;
+Arora et~al. \cite{arora2020schwa} later recast the problem as supervised
+sequence labelling.
+
+Synthesis has since moved past the pipeline those rules were built for.
+FastSpeech~2 \cite{ren2021fastspeech2} predicts duration, pitch and energy and
+generates a spectrogram in parallel. VITS \cite{kim2021vits} maps text to
+waveform through a variational autoencoder trained adversarially and learns
+its own alignment. Matcha-TTS \cite{mehta2024matcha} reaches comparable
+quality in fewer steps using conditional flow matching. Where a spectrogram is
+produced, HiFi-GAN \cite{kong2020hifigan} turns it into audio. All three
+acoustic models can be trained on characters directly, and for Indic languages
+that is now common practice.
+
+So the practical question is whether to write the front end at all. If these
+architectures learn schwa deletion from data, the work is wasted and nobody
+should repeat it. If they do not, the field should stop defaulting to
+character input for Devanagari. Neither answer has been published, because the
+comparison that would settle it has not been run with everything else held
+fixed.
+
+My contribution is that controlled comparison, plus the evaluation machinery
+it turned out to need. This paper reports the design, the ten runs that have
+finished, the preliminary intelligibility result, and two measurement defects
+that I think are of wider interest than my own numbers, because each one
+produced a plausible answer that was wrong.
+
+\section{Related Work}
+
+\textbf{Architectures.} FastSpeech~2 \cite{ren2021fastspeech2} depends on
+durations from somewhere, traditionally an external aligner. VITS
+\cite{kim2021vits} collapses the pipeline into one model and aligns internally
+by monotonic alignment search, inherited from Glow-TTS \cite{kim2020glowtts}.
+Matcha-TTS \cite{mehta2024matcha} is the smallest of the three and is
+interesting at the low-data end of a ladder. StyleTTS~2
+\cite{li2023styletts2} reports stronger naturalness than any of them and is
+excluded here for compute rather than for quality.
+
+\textbf{Alignment.} The Montreal Forced Aligner \cite{mcauliffe2017mfa} has
+been the conventional duration source for the FastSpeech family. Badlani
+et~al. \cite{badlani2022alignment} showed that an alignment module trained
+jointly with the model, without external supervision, matches or beats
+forced-aligner durations. That result decided my design, for a reason
+specific to this study: an external aligner trained on a different corpus and
+phone set would carry an unmeasured mismatch into exactly the arm under test,
+and an aligner trained from my own dictionary would make the durations a
+function of the schwa rule, which is the variable being manipulated.
+
+\textbf{Indic resources.} The consortium recordings \cite{baby2016resources}
+sit behind most Indian-language work, including both corpora used here. Kumar
+et~al. \cite{kumar2023nextbillion} obtained usable quality from modest
+per-language data. IndicVoices-R \cite{sankar2024indicvoicesr} scaled that for
+synthesis. MMS \cite{pratap2024mms} supplies pretrained VITS checkpoints for
+both of my languages and, separately, the recogniser I use as a cross-check.
+These papers establish that Indic TTS works and roughly how well. None of them
+separates the contribution of the front end.
+
+\textbf{Evaluation.} Mel-cepstral distortion \cite{kubichek1993mcd} is the
+standard spectral measure, and one that is partly a loudness measure if the
+zeroth coefficient is retained. Pitch error on a linear scale is dominated by
+the higher-pitched speaker, and pitch itself is usually taken from WORLD
+\cite{morise2016world}, where this testbed uses a YIN tracker gated on frame
+energy and records that choice rather than defending it as optimal. Intelligibility is increasingly assessed by
+transcribing synthesised audio, often with Whisper
+\cite{radford2023whisper}, and automatic predictors such as UTMOS
+\cite{saeki2022utmos} and NISQA \cite{mittag2021nisqa} stand in for listening
+tests. Both predictors were trained largely on English and Japanese. Section
+\ref{sec:intel} argues that a sequence-to-sequence recogniser is the wrong
+instrument for a schwa contrast whatever its accuracy, and that the
+recogniser's own error rate on natural audio has to be reported with any
+transcription-based number.
+
+\section{Testbed}
+
+\subsection{Corpora and Standardisation}
+
+I use the Hindi and Marathi corpora from the SPRING Lab IndicTTS collection,
+one studio speaker per language. No dataset card states hours, speaker count
+or sampling rate, so I measured all three; an estimate from a 50-utterance
+sample proved 19\% low for Hindi. Of 22{,}764 raw utterances, 22{,}088 survive
+standardisation.
+
+Every utterance is downmixed to mono, silence-trimmed at 40~dB below peak with
+50~ms of padding retained, normalised to $-23$~LUFS \cite{itu2015bs1770},
+resampled to a 22.05~kHz master and separately to 16~kHz, and peak-guarded at
+0.99. Two details are deliberate. Trimming happens at the 48~kHz source, so
+both outputs share their boundaries to the sample. And the 16~kHz copy is
+derived from the same gained source rather than from the master, because
+cascading two resamples would put a measurably different signal in front of
+one architecture and that difference would later read as an architectural
+effect.
+
+Splits are frozen by salted SHA-256 and recorded in a lock file. They rebuild
+byte-identically on a different machine, operating system and filesystem, which
+is checked rather than assumed. The ladder is nested: the ten-minute rung is a
+subset of the thirty-minute rung, which is a subset of the one-hour rung, and
+so on up through five and nine hours. Independent samples at each rung would
+confound data quantity with data identity.
+
+\subsection{Front End}
+
+The front end has four separable stages, with schwa deletion as a stage that
+can be switched off independently of the others. Over 11{,}044 transcripts and
+870{,}547 phone tokens it emits no unknown symbol.
+
+Accuracy is 39 of 47 words, 83.0\%, against gold forms built from elicited
+native-speaker yes/no judgements rather than from my own answer key. Four
+qualifications travel with that number. Three speakers' responses were
+averaged into one sheet before the merge, so inter-speaker agreement cannot be
+recovered and the apparent zero variation is an artefact of the averaging.
+Seven of the eight errors are speakers retaining a schwa the rule deletes,
+which is citation-form reading, so 83.0\% is a lower bound under conditions
+that favour retention. Four of the eight fall in one environment, word-final
+schwa after a consonant cluster in Sanskrit-derived words; the configuration
+has a blocking list for exactly this and it is left empty, because filling it
+from these four words would fit the rule to its own test set. One elicited
+answer is impossible and is left in the denominator rather than quietly
+dropped.
+
+\subsection{Holding the Budget Fixed}
+\label{sec:budget}
+
+Batching is by mel frames, charged as $|B| \times \max_i T_i$ so that padding
+is paid for rather than hidden, with a cap of 12{,}000 frames per step and
+100{,}000 steps for every run in the matrix. At hop 256 a step therefore
+consumes exactly $12{,}000 \times 256 = 3{,}072{,}000$ samples, which is
+139.32~s of audio at 22.05~kHz and 192.00~s at 16~kHz. The asymmetry is
+recorded rather than corrected, because correcting it would make the step
+counts differ instead.
+
+One consequence of a fixed step budget on a nested ladder is worth stating
+explicitly, since it governs how the ladder must be read. The number of passes
+over the data is inversely proportional to the rung size: 430 epochs at nine
+hours, 774 at five, 3{,}870 at one, 7{,}740 at thirty minutes and 23{,}220 at
+ten. The lowest rungs are not undertrained. They are memorised.
+
+Every run is described by a configuration whose hash covers all fields except
+a small cosmetic set. Two arms that should differ only in input representation
+therefore have hashes that differ in exactly that field, and an accidental
+divergence is detectable. A separate assertion refuses to start a run whose
+configuration declares a warm start that its adapter does not read; this was
+added after eight runs trained from scratch while their configurations claimed
+otherwise, which nothing caught until the audio was listened to.
+
+\subsection{Matrix and Progress}
+
+Twenty-two runs: the two Hindi arms for each of FastSpeech~2 and VITS, a
+nested ladder of four rungs for each architecture, both arms of the Marathi
+control, two vocoders, and four seed-repeat runs. The seed runs matter more
+than their number suggests. Until the spread between two runs that differ only
+in random seed is known, no gap between two arms can be reported as a finding,
+and the rest of the matrix is a set of single samples with nothing to measure
+them against.
+
+Eight runs of 100{,}000 steps have completed: both Hindi arms of FastSpeech~2
+and of VITS, the five-hour and one-hour FastSpeech~2 rungs, and both Marathi
+FastSpeech~2 arms. The VITS seed pair is in training, which leaves twelve runs
+not yet started.
+FastSpeech~2 has 37.99~M parameters and VITS 83.05~M, both measured rather
+than quoted.
+
+\section{Evaluation}
+
+\subsection{Why Mel-Cepstral Distortion Is Not Enough}
+\label{sec:mcd}
+
+I compute mel-cepstral distortion with one dynamic-time-warping alignment
+shared by the spectral and pitch measures, and I report it against a chance
+level obtained by rotating the reference set by one utterance, which gives the
+score of mismatched audio on the same material and the same alignment.
+
+Against that baseline the two Hindi VITS arms sit at 54.3\% and 55.4\% of the
+distance to unrelated audio. They differ by 0.89\% of chance, which is 0.31
+standard deviations. At the quality the budget affords, the distance of both
+systems from the reference swamps the difference between them. A measure that
+cannot separate the arms is not evidence that the arms do not differ, and
+reporting it as such would be the error this section exists to avoid.
+
+\subsection{Schwa Deletion in Milliseconds}
+\label{sec:duration}
+
+A retained schwa takes time. Under the rule, 32.0\% of Hindi words carry a
+deletion site; the phonemic arm is handed the deletion and the graphemic arm
+has to infer it. So I fit
+\begin{equation}
+t_{\text{syn}} - t_{\text{ref}} = \beta_0 + \beta_1 n_{\text{sites}}
+\end{equation}
+over the test set, where $n_{\text{sites}}$ is the number of rule-predicted
+deletion sites in the input text and $\beta_1$ is milliseconds of excess
+duration per site. The intercept is fitted rather than assumed so that a
+uniformly slow model does not read as one retaining schwas. Deletion-site
+counts come from the text, so both arms receive the same count for the same
+utterance, which is the point of the design.
+
+On synthetic data where the truth is known, a model retaining every schwa
+gives $\beta_1 = 67.8$~ms at $t = 45.1$ and $r = 0.99$, and a model deleting
+correctly gives $0.5$~ms at $t = 0.4$ and $r = 0.05$. The two fitted slopes
+are separated by more than five standard errors at realistic noise, against
+$t = 0.31$ for mel-cepstral distortion on the same contrast. The fit refuses
+to return a value in the two cases where a regression would otherwise invent
+one: fewer than three usable points, and no variation in site count across
+utterances, where no slope is identifiable.
+
+This measure needs no vocoder, because a mel frame count is a duration. It
+therefore applies to the FastSpeech~2 arms before their vocoder has trained,
+which is otherwise a hard block on every waveform metric.
+
+\subsection{Intelligibility, and Why the Recogniser Must Be Chosen Carefully}
+\label{sec:intel}
+
+Transcribing synthesised speech and comparing the transcript with the input
+text is the conventional intelligibility proxy. It is only sound if the
+recogniser does not repair the errors being counted, and for this contrast
+that condition excludes the strongest available recognisers. A
+sequence-to-sequence decoder carries an implicit language model. Given a
+slurred Hindi word it will emit the correct spelling, because the spelling is
+what its training data makes likely, and a deleted or retained schwa is
+precisely the kind of error such a decoder repairs. A weaker connectionist
+temporal classification model, decoded greedily with no external language
+model, is frame-local and reports what it heard. For this measurement it is
+the better instrument.
+
+I therefore use two CTC recognisers and never average them. IndicConformer
+\cite{ai4bharat2025indicconformer} is primary: MIT licensed, built for 22
+Indian languages, Devanagari output. MMS \cite{pratap2024mms} with the Hindi
+adapter is the cross-check, a different architecture trained on different
+data. Both are pinned to a full commit hash, which for IndicConformer fixes
+the executed code and not only the weights. Disagreement between them is
+reported as a result, because it is evidence about the instrument.
+
+Character error rate leads rather than word error rate. Devanagari word
+boundaries interact with the sandhi and schwa phenomena under test, so a rate
+counting word boundaries partly measures my own tokenisation; one missed
+schwa in a three-word sentence costs a third of the word error rate and a
+tenth of the character error rate. Rates are pooled as total edits over total
+reference characters rather than averaged per utterance, because short words
+are where a deleted final schwa is proportionally largest.
+
+Two further choices follow from Section \ref{sec:mcd}. The errors are
+partitioned by whether the reference word carries a rule-predicted deletion,
+with word-final and medial sites kept in separate classes, since the duration
+measure of Section \ref{sec:duration} cannot distinguish them. And the real
+recordings are transcribed too, giving the recogniser's own error rate as a
+floor. Without that floor an absolute rate on synthesis has no denominator,
+and the same partition on natural audio says whether the recogniser itself
+struggles at deletion sites, which would otherwise be read as a property of
+the models.
+
+\section{Preliminary Results}
+
+\subsection{Intelligibility on the Hindi VITS Arms}
+
+Table \ref{tab:intel} gives the first ten utterances of the Hindi test split,
+scored on the two VITS arms by both recognisers, with the floor above the runs.
+The class denominators are small and are stated with the rates rather than left
+to be inferred: 327 reference characters in 82 word tokens carry a word-final
+site, 96 characters in 21 tokens carry a medial site, and 389 characters in 124
+tokens carry neither, for 812 characters in total.
+
+\begin{table}[t]
+\centering
+\caption{Character error rate, pooled, on the first ten Hindi test utterances.
+\textsc{gt} is the recogniser's own rate on the real recordings. Classes are
+by whether the reference word carries a rule-predicted deletion site. Excess is
+the site class minus the no-site class. Counts in parentheses are edits over
+reference characters.}
+\label{tab:intel}
+\begin{tabular}{llrrrr}
+\toprule
+Recogniser & Condition & All & Final site & Medial site & No site \\
+\midrule
+IndicConformer & \textsc{gt} & 0.0259 & 0.1040 & 0.0104 & 0.0411 \\
+               &             & (21/812) & (34/327) & (1/96) & (16/389) \\
+               & phonemic    & 0.1047 & 0.2813 & 0.0417 & 0.1208 \\
+               &             & (85/812) & (92/327) & (4/96) & (47/389) \\
+               & graphemic   & 0.1330 & 0.2569 & 0.1667 & 0.1311 \\
+               &             & (108/812) & (84/327) & (16/96) & (51/389) \\
+\midrule
+MMS-1B-all     & \textsc{gt} & 0.0333 & 0.1346 & 0.0521 & 0.0540 \\
+               &             & (27/812) & (44/327) & (5/96) & (21/389) \\
+               & phonemic    & 0.1983 & 0.4526 & 0.2188 & 0.2262 \\
+               &             & (161/812) & (148/327) & (21/96) & (88/389) \\
+               & graphemic   & 0.2266 & 0.4587 & 0.3750 & 0.2674 \\
+               &             & (184/812) & (150/327) & (36/96) & (104/389) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three things in that table are worth separating.
+
+\textbf{The direction of the overall rate agrees across recognisers.} The
+graphemic arm is worse by 0.0283 on both, which is 23 additional edits out of
+812 in each case. The identical figure is a coincidence of small integers and
+would not be expected to recur at larger $n$; the underlying counts differ
+everywhere else.
+
+\textbf{The site-specific effect is medial, not final.} Table
+\ref{tab:excess} subtracts the floor from each arm's excess. At medial sites
+the phonemic arm's errors avoid those words and the graphemic arm's
+concentrate on them, by 0.1147 and 0.1150 for the two recognisers. At
+word-final sites the graphemic arm is marginally the better of the two, by
+$-0.0347$ and $-0.0351$. Two recognisers of different architecture, trained on
+different data, agree on both figures to within $4 \times 10^{-4}$.
+
+\begin{table}[t]
+\centering
+\caption{Excess character error rate at deletion sites, relative to words with
+no site, after subtracting the recogniser's own excess on the real recordings.
+Positive means errors concentrate where the rule fires.}
+\label{tab:excess}
+\begin{tabular}{llrrr}
+\toprule
+Site & Recogniser & Phonemic & Graphemic & Difference \\
+\midrule
+Final  & IndicConformer & $+0.0976$ & $+0.0629$ & $-0.0347$ \\
+       & MMS-1B-all     & $+0.1458$ & $+0.1107$ & $-0.0351$ \\
+Medial & IndicConformer & $-0.0484$ & $+0.0663$ & $+0.1147$ \\
+       & MMS-1B-all     & $-0.0055$ & $+0.1095$ & $+0.1150$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+That split is what the phonology predicts. Word-final schwa deletion in Hindi
+is close to categorical and is inferable from the orthography alone, since a
+word-final consonant simply does not carry its inherent vowel; a model trained
+on characters can learn it as a statistical regularity of the script. Medial
+deletion depends on syllable weight and morphology, which the graphemes
+underdetermine. An explicit front end should pay where the orthography stops
+being sufficient, and on this evidence that is where it pays.
+
+\textbf{The nuisance variable sits in the other class.} On the real
+recordings both recognisers err substantially more per character on
+word-final-site words than on words with no site: 34/327 against 16/389, and
+44/327 against 21/389. Those words are longer, rarer and carry more consonant
+clusters, so part of the apparent final-site concentration has nothing to do
+with synthesis. The floor's \emph{medial} excess, by contrast, is $-0.0307$ and
+$-0.0019$, which is to say nothing. The confound is concentrated in the class
+where the effect is absent and absent from the class where the effect is
+found.
+
+\textbf{What this is not.} The medial class is 96 characters in 21 word
+tokens, and the counts behind the headline ratio are 16 edits against 4 for
+IndicConformer and 36 against 21 for MMS. A single utterance could be carrying
+most of it. No confidence interval is computable from one sample of ten
+utterances, and none is claimed. The result is reported here because the
+agreement between two independent recognisers is itself informative, and
+because the measure's behaviour is worth describing before the full split is
+scored.
+
+\section{Two Measurement Defects}
+
+Both of the following produced a plausible number that was wrong in a
+direction that mattered. I give each with the diagnostic that exposed it,
+because neither would have been caught by a test of the code's correctness.
+
+\subsection{A Training Loss That Is Mostly a Pitch Error}
+\label{sec:loss}
+
+The FastSpeech~2 runs end at a final training loss of 314.60 at nine hours and
+299.85 at five hours, and then 10.04 at one hour. A factor of 29.9 at the
+one-hour rung has no reading as overfitting, because an overfitting curve has
+no cliff in it, and the ladder could not be plotted against training loss
+until the number was explained.
+
+The objective is a sum of five terms, and two of them are mean squared errors
+in physical units: fundamental frequency in hertz and the Euclidean norm of
+each linear spectrogram frame, both weighted at 0.1. Neither is normalised
+anywhere in my pipeline, because the upstream implementation normalises them
+inside a dataset class that this testbed does not use. Measured on twelve
+utterances of each rung, through the same feature code the models trained on,
+a mean predictor's share of the loss is as shown in Table \ref{tab:loss}.
+
+\begin{table}[t]
+\centering
+\caption{Contribution of each loss term at a mean predictor, 22.05~kHz, twelve
+utterances per column. The mel term is the only one that measures spectral
+quality.}
+\label{tab:loss}
+\begin{tabular}{lrr}
+\toprule
+Term & One-hour rung & Nine-hour only \\
+\midrule
+$1.0 \times$ mel $L_1$ against a mean predictor & 1.814 & 1.972 \\
+$0.1 \times \operatorname{var}(f_0$ in Hz$)$ & 569.131 & 653.995 \\
+$0.1 \times \operatorname{var}($frame energy$)$ & 45.381 & 45.647 \\
+\midrule
+Sum & 616.326 & 701.614 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+So a mean predictor scores roughly 617 to 702, and the mel term is under one
+per cent of it. The nine-hour run's 314.60 implies a pitch error of about
+51.7~Hz against a speaker standard deviation of 80.9~Hz. The one-hour run's
+10.04 implies about 10.0~Hz. Since the rungs are nested subsets of one
+speaker, the units are identical at every rung; what differs is that 541
+utterances seen 3{,}870 times have their fundamental frequency memorised. The
+mel term is 0.6\% of the nine-hour loss and 18\% of the one-hour loss, so the
+same number does not mean the same thing at two rungs.
+
+The consequence for the ladder is that it must be plotted against held-out
+metrics and not against training loss, with loss curves confined to an
+appendix carrying this decomposition beside them. The consequence for
+FastSpeech~2 is that its mel decoder is optimised against under one per cent of
+the gradient signal while an unnormalised pitch head takes most of the rest,
+which is a sufficient explanation for the poor quality of those arms and is a
+property of the objective rather than of the data or the architecture.
+Normalising the two terms would change the configuration hash of ten runs, so
+I record the defect and keep the objective fixed for the remainder of the
+matrix rather than making the arms incomparable mid-study. The per-term
+breakdown is now logged at every step, so the claim is checkable from the runs
+instead of reconstructed from a filter bank.
+
+\subsection{Punctuation That Moved Words Between Classes}
+\label{sec:punct}
+
+No CTC recogniser emits punctuation, and the reference transcripts are
+punctuated. On the first two ground-truth utterances of the Hindi test split,
+41\% and 48\% of the measured character error was commas and a full stop that
+the recogniser was never going to produce. On its own that is an inflation
+affecting all conditions equally.
+
+The second effect is not benign. The site classifier asks whether a
+rule-predicted deletion falls on the \emph{last} segment of a word, and a
+trailing comma is one more segment. All six word-final-site words sampled from
+the test split were reclassified from final to medial by appending a comma. The
+word-final class had therefore been excluding every clause-final word, which is
+the position where final schwa deletion is most audible and most prosodically
+marked, and the medial class had been contaminated with them.
+
+The symptom was visible in the first table I produced and I misread it as
+small-sample noise: the punctuation share of characters was 0.0000 in the
+final class against 0.0690 and 0.0561 in the other two. Zero out of 283
+characters is not chance. After stripping punctuation, 8 word tokens and 44
+characters move from the medial class back to the final class in ten
+utterances, and the floor's character error rate falls by roughly half.
+
+The correction changed the conclusion rather than its precision. Before it, the
+two recognisers disagreed about the final-site effect, giving $-0.0038$ and
+$+0.1871$; after it they agree at $-0.0347$ and $-0.0351$, and the effect
+relocates to the medial class. Two notes for anyone building a similar
+pipeline. Strip only Unicode punctuation categories, since combining marks are
+not punctuation and the nukta, anusvara and visarga are exactly the contrasts a
+Devanagari study is about. And derive the class partition and the error rate
+from one shared normalisation, since two copies of that chain are two
+conventions.
+
+\section{Threats to Validity}
+
+\textbf{One speaker per language.} Every result is within-speaker. Nothing here
+separates a property of Hindi from a property of this speaker's Hindi.
+
+\textbf{The front end is 83.0\% accurate.} Both arms inherit its errors
+asymmetrically: the phonemic arm is handed a wrong phoneme where the rule is
+wrong, while the graphemic arm is handed the orthography and may or may not
+reproduce the correct form. An effect measured against rule-predicted sites is
+measured against the rule, not against the truth.
+
+\textbf{The budget asymmetry of Section \ref{sec:budget}} gives the 16~kHz arm
+192.00~s of audio per step against 139.32~s at 22.05~kHz. It is recorded, not
+corrected.
+
+\textbf{Intelligibility is an ASR proxy.} Even a CTC recogniser has acoustic
+priors, and the floor reported with every rate is the available defence rather
+than a complete one. A listening test is planned and not yet run.
+
+\textbf{The seed floor is not yet measured.} Until it is, the gaps in Tables
+\ref{tab:intel} and \ref{tab:excess} have no scale against them. This is the
+single largest gap in the present evidence and the reason none of these
+numbers is offered as a finding.
+
+\textbf{Marathi is a control, not a replication.} It shares the script and
+most of the phoneme inventory \cite{ohala1999hindi, dhongde2009marathi} and
+does not apply Hindi's medial deletion rule, which is what makes it able to
+separate script from phonology. It is not a second test of the Hindi result.
+
+\section{Conclusions and Remaining Work}
+
+The testbed holds architecture, speaker, corpus, budget, vocoder and
+evaluation fixed and varies only the input representation, with the budget
+enforced in mel frames and configuration hashes that make an unintended
+difference detectable. Eight of twenty-two runs have finished and two are in
+training.
+
+Mel-cepstral distortion does not resolve this contrast at the quality the
+budget affords, at 0.31 standard deviations, so I report two measures that
+can: milliseconds of excess duration per rule-predicted deletion site, which
+needs no vocoder and cannot saturate, and a site-partitioned character error
+rate from two independent CTC recognisers, floor-corrected against their own
+error on the real recordings. On ten utterances both recognisers agree that
+the graphemic arm's errors concentrate at medial deletion sites and not at
+final ones, which is the asymmetry the phonology predicts, and which no global
+error rate would have shown.
+
+The two defects of Section \ref{sec:loss} and Section \ref{sec:punct} are
+offered as the more portable contribution. A training loss whose dominant
+terms are in physical units is not comparable across data scales even when the
+data is nested, and a site-partitioned error rate computed on punctuated
+references partitions on the punctuation. Each produced a confident wrong
+answer, and in the second case the wrong answer was the one the hypothesis
+predicted.
+
+What remains is the twelve outstanding runs, the seed-variance floor that
+gives every gap its scale, the full test split in place of ten utterances with
+a bootstrap confidence interval over utterances, the vocoder that unblocks
+waveform metrics for the FastSpeech~2 arms, the Marathi control, correlation
+of predicted mean opinion score against human ratings on Devanagari, a
+listening test, and real-time factor on consumer hardware. The testbed, the
+checkpoints and a speaker-validated contested-schwa stress-test set will be
+released.
+
+\begin{credits}
+\subsubsection{\ackname} I thank Dr.~Shobha Bhatt for supervision, and the
+native speakers who provided the schwa judgements of Section 3.2.
+
+\subsubsection{\discintname} The author has no competing interests.
+\end{credits}
+
+\begin{thebibliography}{99}
+
+\bibitem{ren2021fastspeech2}
+Ren, Y., et al.: FastSpeech 2: Fast and high-quality end-to-end text to
+speech. In: ICLR (2021). arXiv:2006.04558
+
+\bibitem{kim2021vits}
+Kim, J., Kong, J., Son, J.: Conditional variational autoencoder with
+adversarial learning for end-to-end text-to-speech. In: ICML (2021).
+arXiv:2106.06103
+
+\bibitem{mehta2024matcha}
+Mehta, S., et al.: Matcha-TTS: A fast TTS architecture with conditional flow
+matching. In: ICASSP (2024). arXiv:2309.03199
+
+\bibitem{kong2020hifigan}
+Kong, J., Kim, J., Bae, J.: HiFi-GAN: Generative adversarial networks for
+efficient and high fidelity speech synthesis. In: NeurIPS (2020).
+arXiv:2010.05646
+
+\bibitem{kim2020glowtts}
+Kim, J., et al.: Glow-TTS: A generative flow for text-to-speech via monotonic
+alignment search. In: NeurIPS (2020). arXiv:2005.11129
+
+\bibitem{li2023styletts2}
+Li, Y.A., et al.: StyleTTS 2: Towards human-level text-to-speech through style
+diffusion and adversarial training with large speech language models. In:
+NeurIPS (2023). arXiv:2306.07691
+
+\bibitem{badlani2022alignment}
+Badlani, R., et al.: One TTS alignment to rule them all. In: ICASSP (2022).
+arXiv:2108.10447
+
+\bibitem{mcauliffe2017mfa}
+McAuliffe, M., et al.: Montreal Forced Aligner: Trainable text-speech
+alignment using Kaldi. In: Interspeech, pp. 498--502 (2017)
+
+\bibitem{pratap2024mms}
+Pratap, V., et al.: Scaling speech technology to 1,000+ languages. Journal of
+Machine Learning Research \textbf{25} (2024). arXiv:2305.13516
+
+\bibitem{kumar2023nextbillion}
+Kumar, G.K., et al.: Towards building text-to-speech systems for the next
+billion users. In: ICASSP (2023). arXiv:2211.09536
+
+\bibitem{sankar2024indicvoicesr}
+Sankar, A., et al.: IndicVoices-R: Unlocking a massive multilingual
+multi-speaker speech corpus for scaling Indian TTS. In: NeurIPS Datasets and
+Benchmarks (2024). arXiv:2409.05356
+
+\bibitem{baby2016resources}
+Baby, A., Thomas, A.L., Nishanthi, N.L., et al.: Resources for Indian
+languages. In: Proc. Text, Speech and Dialogue (CBBLR Workshop) (2016)
+
+\bibitem{narasimhan2004schwa}
+Narasimhan, B., Sproat, R., Kiraz, G.: Schwa-deletion in Hindi text-to-speech
+synthesis. International Journal of Speech Technology \textbf{7}(4),
+319--333 (2004)
+
+\bibitem{arora2020schwa}
+Arora, A., Gessler, S., Hundt, N.: Supervised grapheme-to-phoneme conversion
+of orthographic schwas in Hindi and Punjabi. In: ACL (2020). arXiv:2004.10353
+
+\bibitem{ohala1999hindi}
+Ohala, M.: Hindi. In: Handbook of the International Phonetic Association, pp.
+100--103. Cambridge University Press (1999)
+
+\bibitem{dhongde2009marathi}
+Dhongde, R.V., Wali, K.: Marathi. John Benjamins (2009)
+
+\bibitem{kubichek1993mcd}
+Kubichek, R.: Mel-cepstral distance measure for objective speech quality
+assessment. In: IEEE Pacific Rim Conf. on Communications, Computers and Signal
+Processing, pp. 125--128 (1993)
+
+\bibitem{morise2016world}
+Morise, M., Yokomori, F., Ozawa, K.: WORLD: A vocoder-based high-quality
+speech synthesis system for real-time applications. IEICE Trans. on
+Information and Systems \textbf{E99-D}(7), 1877--1884 (2016)
+
+\bibitem{radford2023whisper}
+Radford, A., et al.: Robust speech recognition via large-scale weak
+supervision. In: ICML (2023). arXiv:2212.04356
+
+\bibitem{saeki2022utmos}
+Saeki, T., et al.: UTMOS: UTokyo-SaruLab system for VoiceMOS Challenge 2022.
+In: Interspeech (2022). arXiv:2204.02152
+
+\bibitem{mittag2021nisqa}
+Mittag, G., et al.: NISQA: A deep CNN-self-attention model for
+multidimensional speech quality prediction with crowdsourced datasets. In:
+Interspeech (2021). arXiv:2104.09494
+
+\bibitem{itu2015bs1770}
+International Telecommunication Union: Algorithms to measure audio programme
+loudness and true-peak audio level. Recommendation ITU-R BS.1770-4 (2015)
+
+\bibitem{ai4bharat2025indicconformer}
+AI4Bharat: IndicConformer 600M multilingual, automatic speech recognition for
+22 Indian languages. Hugging Face model repository, revision
+\texttt{e9b71b36}, MIT licence.
+\url{https://huggingface.co/ai4bharat/indic-conformer-600m-multilingual}
+
+\end{thebibliography}
+
+\end{document}
