@@ -31,11 +31,21 @@ MISMATCHED references, rotating the reference by one utterance, which gives the
 chance level on the same material and the same alignment. The table prints it,
 and the normalised position between the two.
 
-**A mel-only run is skipped, loudly.** FastSpeech 2 and Matcha need a vocoder,
-and until r06 and r17 exist their waveform metrics cannot be computed at all.
-The run is recorded as unscorable with the reason rather than quietly omitted,
-because a results table with a silently missing row is worse than one with a
-stated gap.
+**A mel-only run is scored on what can be scored.** FastSpeech 2 needs a
+vocoder for its waveform metrics, and until r06 exists those are not
+computable. But a mel frame count is a duration, so the schwa-deletion measure
+below applies to it right now. Only the waveform metrics are marked
+unavailable; the row is never silently dropped, because a table with a missing
+row is worse than one with a stated gap.
+
+**The duration measure is the one that answers the question.** The acoustic
+metrics describe how far both systems are from the reference, and at this
+quality level that distance swamps the difference between them: r02 and r05 sit
+about 55% of the way to unrelated audio and differ by 0.89% of chance. A schwa,
+though, takes time. The rule deletes one in 32.0% of Hindi words, the phonemic
+arm is handed that and the graphemic arm has to infer it, so excess duration
+regressed on deletion-site count gives milliseconds of excess per missed site.
+See src/analysis/duration_bias.py. It needs no vocoder and cannot saturate.
 
     python scripts/evaluate.py --lang hindi
     python scripts/evaluate.py --lang hindi --limit 25 --threads 8
@@ -107,6 +117,27 @@ def score_one(ref_wav, syn_wav, sr: int) -> dict:
     return out
 
 
+def duration_fit(rows: list[dict]) -> dict:
+    """Excess duration regressed on deletion-site count, per run."""
+    from src.analysis.duration_bias import fit
+
+    pairs = [(r["deletion_sites"], r["excess_seconds"]) for r in rows
+             if "deletion_sites" in r and "excess_seconds" in r]
+    if len(pairs) < 3:
+        return {"note": f"needs at least 3 utterances, have {len(pairs)}"}
+    try:
+        f = fit([a for a, _ in pairs], [b for _, b in pairs])
+    except ValueError as exc:
+        return {"note": str(exc)}
+    return {"slope_ms_per_site": f.slope_ms,
+            "slope_se_ms": f.slope_se * 1000.0,
+            "slope_t": f.slope_t,
+            "intercept_s": f.intercept_s,
+            "r": f.r, "n": f.n,
+            "sites_mean": f.sites_mean,
+            "excess_mean_s": f.excess_mean_s}
+
+
 def chance_level(references: list, syntheses: list, sr: int) -> dict:
     """MCD against MISMATCHED references: the score of getting it wrong.
 
@@ -161,7 +192,11 @@ def evaluate_bundle(bundle_dir: pathlib.Path, lang: str, split: str,
                     limit: int | None, out_dir: pathlib.Path) -> dict:
     import soundfile as sf
 
+    from src.analysis.duration_bias import syn_seconds_from_mel
+    from src.analysis.schwa_sites import sentence_stats
     from src.export.synthesize import load, read_manifest
+    from src.g2p import G2P
+    from src.train.features import HOP
 
     manifest = read_manifest(bundle_dir)
     rid = manifest["run_id"]
@@ -179,15 +214,17 @@ def evaluate_bundle(bundle_dir: pathlib.Path, lang: str, split: str,
     if manifest["language"] != lang:
         record["skipped"] = f"trained on {manifest['language']}, not {lang}"
         return record
-    if manifest.get("needs_vocoder"):
-        record["skipped"] = (
-            "mel-only architecture: waveform metrics need a vocoder, and r06 "
-            "and r17 have not trained. Not omitted, just not computable yet.")
-        return record
+    mel_only = bool(manifest.get("needs_vocoder"))
+    if mel_only:
+        record["waveform_metrics"] = (
+            "unavailable: mel-only architecture and the vocoder has not "
+            "trained. Duration metrics below are computed from the mel frame "
+            "count and are unaffected.")
 
     b = load(bundle_dir, device="cpu")
     sr = b.sample_rate
     col = reference_column(sr)
+    g2p = G2P.for_language(lang)
     rows_in = load_split(lang, split)
     if limit:
         rows_in = rows_in[:limit]
@@ -208,12 +245,28 @@ def evaluate_bundle(bundle_dir: pathlib.Path, lang: str, split: str,
                                  "error": f"reference is {got} Hz, run is {sr}"})
                 continue
             sp = b.synthesize(row["text"])
-            scored = score_one(ref, sp.waveform, sr)
-            scored["id"] = row["id"]
-            scored["tokens"] = len(sp.tokens)
+            st = sentence_stats(g2p, row["text"])
+            ref_s = float(row["seconds"])
+            if sp.waveform is not None:
+                syn_s = len(sp.waveform) / sr
+                scored = score_one(ref, sp.waveform, sr)
+                syntheses.append((row["id"], sp.waveform))
+                references.append((row["id"], ref))
+            else:
+                syn_s = syn_seconds_from_mel(sp.mel.shape[1], HOP, sr)
+                scored = {}
+            scored.update({
+                "id": row["id"], "tokens": len(sp.tokens),
+                "ref_seconds": ref_s, "syn_seconds": syn_s,
+                "excess_seconds": syn_s - ref_s,
+                # Deletion sites are a property of the TEXT, so both arms get
+                # the same count for the same utterance. That is the point:
+                # one arm is handed the deletion and the other must infer it.
+                "deletion_sites": st["final"],
+                "medial_sites": st["medial"],
+                "words": st["words"],
+            })
             per_utt.append(scored)
-            syntheses.append((row["id"], sp.waveform))
-            references.append((row["id"], ref))
         except Exception as exc:                              # noqa: BLE001
             failures.append({"id": row["id"],
                              "error": f"{type(exc).__name__}: {exc}"})
@@ -223,6 +276,7 @@ def evaluate_bundle(bundle_dir: pathlib.Path, lang: str, split: str,
             print(f"    {rid}: {i}/{len(rows_in)}", flush=True)
 
     record["summary"] = summarise(per_utt)
+    record["duration_bias"] = duration_fit(per_utt)
     record["chance"] = chance_level(references, syntheses, sr)
     record["failures"] = failures
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -282,9 +336,13 @@ def main(argv: list[str] | None = None) -> int:
     (a.out / f"eval_{a.lang}_{a.split}.json").write_text(
         json.dumps(combined, indent=1, ensure_ascii=False), encoding="utf-8")
 
-    print(f"\n{'run':<6}{'arch':<13}{'input':<10}{'seed':>5}{'n':>5}"
-          f"{'MCD dB':>9}{'sd':>7}{'chance':>9}{'%ofch':>7}"
-          f"{'logF0':>8}{'V/UV':>7}{'len':>7}")
+    # The deletion columns come first: they answer the question, the acoustic
+    # ones describe how far both systems are from the reference.
+    print(f"\n{'run':<6}{'arch':<13}{'input':<10}{'n':>4}"
+          f"{'ms/site':>9}{'se':>7}{'t':>7}{'r':>7}"
+          f"{'MCD dB':>9}{'chance':>8}{'%ofch':>7}{'logF0':>8}{'len':>7}")
+    print(f"{'':<33}{'<- schwa deletion, the question':>30}"
+          f"{'   <- acoustic distance':<30}")
     for r in records:
         if "summary" not in r:
             print(f"{r.get('run_id', r.get('bundle','?')):<6}"
@@ -297,12 +355,17 @@ def main(argv: list[str] | None = None) -> int:
         got = g("mcd_db")
         frac = (100.0 * got / ch) if (isinstance(got, float)
                                       and isinstance(ch, float) and ch) else None
+        d = r.get("duration_bias") or {}
         print(f"{r['run_id']:<6}{r['architecture']:<13}{r['input_repr']:<10}"
-              f"{str(r.get('seed','-')):>5}{s['n_utterances']:>5}"
-              f"{fmt(got,9,3)}{fmt(g('mcd_db','sd'),7,3)}"
-              f"{fmt(ch,9,2)}{fmt(frac,7,1)}"
-              f"{fmt(g('log_f0_rmse'),8,4)}{fmt(g('vuv_error_rate'),7,3)}"
-              f"{fmt(g('length_ratio'),7,3)}")
+              f"{s['n_utterances']:>4}"
+              f"{fmt(d.get('slope_ms_per_site'),9,1)}{fmt(d.get('slope_se_ms'),7,1)}"
+              f"{fmt(d.get('slope_t'),7,2)}{fmt(d.get('r'),7,2)}"
+              f"{fmt(got,9,3)}{fmt(ch,8,1)}{fmt(frac,7,1)}"
+              f"{fmt(g('log_f0_rmse'),8,4)}{fmt(g('length_ratio'),7,3)}")
+        if d.get("note"):
+            print(f"{'':<6}  duration fit: {d['note']}")
+        if r.get("waveform_metrics"):
+            print(f"{'':<6}  {r['waveform_metrics']}")
     print(f"\nwrote {a.out / f'eval_{a.lang}_{a.split}.json'}")
     return 0
 

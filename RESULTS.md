@@ -1734,3 +1734,56 @@ the reference by one utterance, so each synthesis is scored against a recording
 of different words by the same speaker through the same alignment. The table
 prints it and the percentage of it. No MCD figure leaves this project without
 the number it should be read against.
+
+## 2026-10-03 — phase 6 starts with the measure that answers the question
+
+MCD cannot resolve the phonemic-versus-graphemic contrast at this quality
+level, and no amount of care with the acoustic metrics changes that: both arms
+sit about 55% of the way from a faithful reconstruction to unrelated audio, and
+the gap between them is 0.89% of chance, 0.31 standard errors. So phase 6 is
+being built in the reverse of the planned order, with the phenomenon measured
+first and acoustic distance kept as supporting description.
+
+**The measure: a schwa takes time.** The rule deletes a word-final schwa in
+32.0% of Hindi words. The phonemic arm is handed that deletion; the graphemic
+arm has to infer it. If it fails to, its output is longer than the reference by
+roughly one vowel per missed site. So, per run,
+
+    syn_seconds - ref_seconds  =  intercept + slope * n_deletion_sites
+
+and `slope` is milliseconds of excess per deletion site. A model deleting
+correctly has a slope near zero; one keeping the schwas has a slope near the
+duration of a short vowel. The intercept is fitted rather than assumed zero, so
+a model that merely speaks 8% slow does not read as one keeping schwas — tested
+directly.
+
+Three properties make it worth more than its simplicity suggests. It needs no
+vocoder, because a mel frame count is a duration, so FastSpeech 2 is measurable
+while r06 is still training. It cannot saturate, because however rough the
+audio a schwa is either there or not. And it is falsifiable in the right
+direction: if both arms show the same slope, the front end is not buying
+deletion behaviour, which is a real answer rather than a null dressed up.
+
+**Discrimination, on synthetic data where the truth is known:**
+
+    a model keeping every schwa   slope  67.8 ms   se 1.5   t = 45.1   r = 0.99
+    a model deleting correctly    slope   0.5 ms   se 1.4   t =  0.4   r = 0.05
+
+Against MCD's t = 0.31 for the same contrast. The gap between the two fitted
+slopes is over 5 standard errors at realistic noise.
+
+The standard error is reported with every slope, and the fit refuses rather
+than guessing in the two cases where a regression would otherwise invent a
+finding: fewer than three usable points, and no variation in site count across
+utterances, where no slope is identifiable at all.
+
+**The harness no longer skips mel-only runs.** Only their waveform metrics are
+marked unavailable, with the reason; the duration measure runs on them now. A
+row is never silently dropped.
+
+`deletion_sites` is computed from the TEXT, so both arms of a pair get the same
+count for the same utterance. That is the design: one arm receives the deletion
+and the other must work it out, and the regression asks which happened.
+
+12 assertions on the fit, 10 on the harness bookkeeping, 316 across the
+torch-free suites.
