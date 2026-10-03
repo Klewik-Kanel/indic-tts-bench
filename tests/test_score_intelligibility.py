@@ -194,3 +194,66 @@ def test_an_exact_directory_name_wins_over_a_run_id_collision():
         other = _fake_bundle(tmp, "r02_step100000", "r02")
         assert mod._select([exact, other], ["r02"]) == [exact]
         assert mod._select([other, exact], ["r02"]) == [exact]
+
+
+# --- the reference floor ----------------------------------------------------
+
+def test_the_floor_table_is_labelled_as_ground_truth():
+    """A reader must not mistake the recogniser's own rate for a run's."""
+    out = mod.floor_table([])
+    assert "GROUND TRUTH" in out
+    assert "refCER" in out.splitlines()[1]
+
+
+def test_the_floor_table_prints_every_class_and_the_excess():
+    f = {"backend": "mms", "n": 10, "corpus_cer": 0.1812,
+         "classes": {"final": 0.2, "medial": 0.25, "neither": 0.15},
+         "contrast": {"final": {"excess": 0.05}}}
+    line = mod.floor_table([f]).splitlines()[-1]
+    for want in ("mms", "10", "0.1812", "0.2000", "0.2500", "0.1500", "0.0500"):
+        assert want in line, want
+
+
+def test_a_floor_that_failed_prints_its_reason():
+    f = {"backend": "mms", "n": 0, "error": "nothing transcribed"}
+    assert "nothing transcribed" in mod.floor_table([f])
+
+
+def test_a_floor_class_with_no_rate_prints_a_dash():
+    f = {"backend": "mms", "n": 3, "corpus_cer": 0.1,
+         "classes": {"final": None, "medial": None, "neither": 0.1},
+         "contrast": {"final": None}}
+    line = mod.floor_table([f]).splitlines()[-1]
+    assert line.count("-") >= 3
+
+
+def test_the_floor_reads_wav16_and_never_resamples_a_reference():
+    """Both recognisers want 16 kHz and the corpus already has it. A resampled
+    reference would put a filter between the reference and itself."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    floor = src[src.index("def reference_floor("):src.index("def _select(")]
+    assert '"wav16"' in floor
+    assert "wav22" not in floor
+    assert "to_target_sr" not in floor, "a reference must not be resampled"
+
+
+def test_the_floor_is_computed_once_per_backend_not_once_per_bundle():
+    """Both arms of a pair read the same references, so a per-bundle pass
+    would repeat identical work and invite two different floors."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def main("):]
+    assert body.index("reference_floor(") < body.index("score_bundle(")
+
+
+def test_floor_only_stops_before_any_bundle_is_loaded():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def main("):]
+    assert body.index("a.floor_only") < body.index("score_bundle(")
+
+
+def test_no_floor_is_documented_as_debugging_only():
+    """Without the floor a synthesis CER has no denominator, so the flag must
+    not read as an ordinary option."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    i = src.index('"--no-floor"')
+    assert "debugging" in src[i:i + 400]

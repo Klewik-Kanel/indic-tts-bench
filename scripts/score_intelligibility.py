@@ -155,6 +155,76 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     return record
 
 
+def reference_floor(backend_name: str, lang: str, split: str,
+                    limit: int | None, device: str) -> dict:
+    """The recogniser's own error rate on the real recordings.
+
+    Without this a CER on synthesis has no denominator. A recogniser that
+    scores 0.18 on studio ground truth has told you that 0.18 of your
+    synthesis CER was never about the synthesis, and the same partition run on
+    real speech says whether the recogniser itself struggles at deletion sites,
+    which would otherwise read as a property of the models. It is the
+    counterpart of the chance level in scripts/evaluate.py.
+
+    It also catches a broken load. MMS warns that its language-model head was
+    "newly initialized because the shapes did not match", which is documented
+    as expected because load_adapter replaces it afterwards. A head that
+    actually stayed random would still emit fluent-looking Devanagari, and that
+    garbage would read as unintelligible synthesis. Ground truth is the only
+    input whose correct transcript is known in advance, so a floor near zero
+    confirms the adapter loaded and a floor near one says it did not.
+
+    Computed once per backend and attached to every run's record, because the
+    references are the same for both arms of a pair. Always from wav16: the
+    recognisers want 16 kHz, the corpus already has it, and a reference must
+    never be resampled.
+    """
+    import soundfile as sf
+
+    from scripts.evaluate import load_split
+    from src.analysis import position_errors as pe
+    from src.eval import asr
+    from src.g2p import G2P
+
+    engine = asr.backend(backend_name, lang, device=device)
+    g2p = G2P.for_language(lang)
+    rows = load_split(lang, split)
+    if limit:
+        rows = rows[:limit]
+
+    pairs, parts, failures = [], [], []
+    for row in rows:
+        path = INTERIM / lang / row.get("wav16", "")
+        if not row.get("wav16") or not path.exists():
+            failures.append({"id": row["id"], "error": f"no wav16 at {path}"})
+            continue
+        try:
+            wav, got = sf.read(str(path), dtype="float32")
+            if got != asr.TARGET_SR:
+                failures.append({"id": row["id"],
+                                 "error": f"wav16 is {got} Hz, not "
+                                          f"{asr.TARGET_SR}"})
+                continue
+            hyp = engine.transcribe(wav, got)
+            pairs.append((row["text"], hyp))
+            parts.append(pe.partition(g2p, row["text"], hyp))
+        except Exception as exc:                              # noqa: BLE001
+            failures.append({"id": row["id"],
+                             "error": f"{type(exc).__name__}: {exc}"})
+    out = {"backend": backend_name, "n": len(pairs), "failures": failures}
+    if not pairs:
+        out["error"] = "nothing transcribed from the references"
+        return out
+    pooled = pe.accumulate(parts)
+    out["corpus_cer"] = asr.corpus_cer(pairs)
+    out["classes"] = {
+        c: (pooled["rates"][c].cer if pooled["rates"][c].has_rate else None)
+        for c in pe.CLASSES}
+    out["contrast"] = pe.contrast(pooled)
+    out["examples"] = [{"reference": r, "hypothesis": h} for r, h in pairs[:3]]
+    return out
+
+
 def _select(dirs: list[pathlib.Path], wanted: list[str]) -> list[pathlib.Path]:
     """Bundles named by directory name OR by run_id.
 
@@ -195,6 +265,31 @@ def _fmt(v, nd=4):
     return "-" if v is None else f"{v:.{nd}f}"
 
 
+def floor_table(floors: list[dict]) -> str:
+    """The recogniser's own rate on the real recordings, printed first.
+
+    Printed above the runs rather than beside them, because it is a property
+    of the recogniser and the corpus, not of any run. A synthesis CER is read
+    against it.
+    """
+    head = (f"{'asr':16s} {'n':>4s} {'refCER':>7s} {'final':>7s} "
+            f"{'medial':>7s} {'none':>7s} {'excess':>8s}")
+    lines = ["GROUND TRUTH (the recogniser's own floor)", head, "-" * len(head)]
+    for f in floors:
+        if f.get("error"):
+            lines.append(f"{f['backend'][:16]:16s} {f.get('n', 0):4d}   "
+                         f"{f['error']}")
+            continue
+        con = (f.get("contrast") or {}).get("final")
+        cls = f["classes"]
+        lines.append(
+            f"{f['backend'][:16]:16s} {f['n']:4d} {_fmt(f['corpus_cer']):>7s} "
+            f"{_fmt(cls['final']):>7s} {_fmt(cls['medial']):>7s} "
+            f"{_fmt(cls['neither']):>7s} "
+            f"{_fmt(con['excess'] if con else None):>8s}")
+    return "\n".join(lines)
+
+
 def table(records: list[dict]) -> str:
     head = (f"{'run':5s} {'arch':12s} {'repr':9s} {'asr':15s} {'n':>4s} "
             f"{'CER':>7s} {'final':>7s} {'medial':>7s} {'none':>7s} "
@@ -231,6 +326,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--out", default=str(TABLES))
+    ap.add_argument("--no-floor", action="store_true",
+                    help="skip the ground-truth pass. The synthesis numbers "
+                         "then have no denominator, so this is for debugging "
+                         "only")
+    ap.add_argument("--floor-only", action="store_true",
+                    help="transcribe the real recordings and stop. The fastest "
+                         "check that a recogniser loaded correctly")
     a = ap.parse_args(argv)
 
     if a.device != "cpu":
@@ -254,6 +356,31 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     out_dir = pathlib.Path(a.out)
+    floors = []
+    if not a.no_floor:
+        for name in names:
+            print(f"== {name}: ground truth", flush=True)
+            try:
+                floors.append(reference_floor(name, a.lang, a.split,
+                                              a.limit, a.device))
+            except Exception as exc:                          # noqa: BLE001
+                traceback.print_exc()
+                floors.append({"backend": name, "n": 0,
+                               "error": f"{type(exc).__name__}: {exc}"})
+        print()
+        print(floor_table(floors))
+        for f in floors:
+            if not f.get("error"):
+                for ex in f.get("examples", []):
+                    print(f"  {f['backend']} ref: {ex['reference']}")
+                    print(f"  {f['backend']} hyp: {ex['hypothesis']}")
+        print()
+    if a.floor_only:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"asr_floor_{a.lang}.json").write_text(
+            json.dumps(floors, indent=1, ensure_ascii=False), encoding="utf-8")
+        return 0
+
     records = []
     for name in names:
         card = __import__("src.eval.asr", fromlist=["x"]).model_card(name)
@@ -268,14 +395,28 @@ def main(argv: list[str] | None = None) -> int:
                 records.append({"run_id": d.name, "skipped":
                                 f"{type(exc).__name__}: {exc}"})
 
+    by_backend = {f["backend"]: f for f in floors}
+    for r in records:
+        detail = r.get("asr_detail") or {}
+        f = by_backend.get(detail.get("backend"))
+        if f and not f.get("error"):
+            r["reference_floor"] = {"corpus_cer": f.get("corpus_cer"),
+                                    "classes": f.get("classes"),
+                                    "n": f.get("n")}
+
     print()
+    if floors:
+        print(floor_table(floors))
+        print()
     print(table(records))
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     (out_dir / f"intelligibility_{a.lang}_{stamp}.txt").write_text(
-        table(records) + "\n", encoding="utf-8")
+        (floor_table(floors) + "\n\n" if floors else "")
+        + table(records) + "\n", encoding="utf-8")
     (out_dir / f"intelligibility_{a.lang}_{stamp}.json").write_text(
-        json.dumps(records, indent=1, ensure_ascii=False), encoding="utf-8")
+        json.dumps({"reference_floor": floors, "runs": records},
+                   indent=1, ensure_ascii=False), encoding="utf-8")
     return 0
 
 
