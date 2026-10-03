@@ -1353,3 +1353,57 @@ Griffin-Lim stand-in, and the page says they are silent and why.
 The page marks the words where medial deletion applies, so a listener knows
 where to attend, and prints each clip's run id, step, config hash and git commit
 beside it.
+
+## 2026-10-03 — FastSpeech 2 made audible by a labelled placeholder
+
+The FastSpeech 2 arms emit mel spectrograms and r06 and r17 have not trained,
+so the choice was between leaving half the matrix silent in the demo or
+inverting the mel without a vocoder. Griffin-Lim, labelled everywhere it plays.
+
+**Why it is labelled and not a default.** Griffin-Lim recovers phase by
+iteration from magnitudes alone and carries its own metallic, smeared
+signature whatever the mel is worth. A listener told "this is the model" would
+be judging the algorithm. So `--griffin-lim` is explicit, every clip it
+produces records `vocoder: "griffin-lim"` in `data.json`, the player prints the
+caveat beside that clip, and the page repeats it once at the top. What the
+placeholder is good for is checking that the words are there, that the front
+end and the weights line up, and that the interface works before a vocoder
+exists. None of those is a quality claim.
+
+**It inverts this project's mel, not a generic one.** `_spec_and_mel` computes
+`log(max(mel_fb @ |stft|, 1e-5))` with the bank built `fmin=0, fmax=sr//2`.
+Three details each break the inversion without raising: the forward mel is
+MAGNITUDE, so librosa's default `power=2.0` would square-root the spectrum and
+throw away roughly half the dynamic range; the bank must be built to `sr//2`
+rather than to an 8 kHz convention, which is the same trap recorded on 2 Oct;
+and the log has to be undone with `exp` first.
+
+**Verified by round-trip rather than by ear.** One real corpus utterance,
+`hi_005009`, through our forward mel, inverted, then re-analysed through the
+identical forward path. That is the same signal `HiFiGanAdapter.validate` uses,
+so the numbers are comparable to what the vocoder will report.
+
+    n_iter   22.05 kHz    16 kHz
+         1     0.2980    0.3487
+        16     0.1615    0.2046
+        32     0.1492    0.1888
+        60     0.1434    0.1810
+       120     0.1388    0.1787
+    shuffled   2.1473    2.2866   <- the same mel, frames permuted
+
+So 15.0x and 12.6x closer than chance at 60 iterations, which is the default:
+32 to 60 buys 0.0058 and 60 to 120 buys 0.0046. Measured with librosa 0.11.0 in
+the container, while the DGX runs 1.0.0, so the figures are indicative and the
+numbers that matter are the ones the DGX produces.
+
+Griffin-Lim returns a whole number of hops and lands up to one frame short, 45
+samples or 2.0 ms at 22.05 kHz. Left unpadded: a placeholder should not quietly
+invent samples.
+
+**The guards fire before librosa is imported.** The first version validated
+after it, which meant a transposed mel could not be caught without the audio
+stack installed and failed only after a multi-second import. coqui returns
+`[B, T_frames, n_mels]` and this wants `[n_mels, frames]`, so a 184-frame mel
+handed over untransposed would be read as 184 mel bands; that now raises by
+name. 12 assertions on the guards and on agreement with `features.mel_params`,
+188 across the torch-free suites.

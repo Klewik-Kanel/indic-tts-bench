@@ -15,8 +15,15 @@ only a demo.
 Token sequences are written per arm because they are the point: `n ə m ə k`
 beside `न म क` is the ablation in one line.
 
+A mel-only architecture writes no audio unless --griffin-lim is passed. That
+flag is explicit, never a default, because Griffin-Lim recovers phase by
+iteration and has its own metallic signature: a listener told "this is the
+model" would be hearing the algorithm. Clips produced that way carry
+vocoder: "griffin-lim" in data.json and the page labels them.
+
     python scripts/render_demo.py --lang hindi
     python scripts/render_demo.py --lang hindi --bundles exports/r02_step100000
+    python scripts/render_demo.py --lang hindi --griffin-lim
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
+from src.export import griffinlim                                 # noqa: E402
 from src.export.synthesize import load, write_wav                  # noqa: E402
 
 INTERIM = HERE / "data" / "interim"
@@ -51,6 +59,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="bundle directories; defaults to every one in exports/")
     ap.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--griffin-lim", action="store_true",
+                    help="make mel-only arms audible with a labelled "
+                         "Griffin-Lim placeholder, not a vocoder")
+    ap.add_argument("--gl-iters", type=int,
+                    default=griffinlim.DEFAULT_ITERS,
+                    help="Griffin-Lim iterations; past 60 buys almost nothing")
     a = ap.parse_args(argv)
 
     set_path = a.set or TABLES / f"demo_set_{a.lang}.json"
@@ -108,15 +122,28 @@ def main(argv: list[str] | None = None) -> int:
                 write_wav(a.out / rel, sp.waveform, sp.sample_rate)
                 entry["audio"] = rel
                 entry["audio_seconds"] = round(sp.audio_seconds, 3)
+                entry["vocoder"] = "end-to-end"
+            elif a.griffin_lim:
+                # A labelled placeholder, recorded as one. The page shows the
+                # label; an unlabelled vocoder-free rendering presented as the
+                # system's output is a claim this project cannot make.
+                wav = griffinlim.invert(sp.mel, sp.sample_rate,
+                                        n_iter=a.gl_iters)
+                rel = f"audio/{rid}/{s['id']}.wav"
+                write_wav(a.out / rel, wav, sp.sample_rate)
+                entry["audio"] = rel
+                entry["audio_seconds"] = round(len(wav) / sp.sample_rate, 3)
+                entry["mel_frames"] = int(sp.mel.shape[1])
+                entry["vocoder"] = "griffin-lim"
+                entry["gl_iters"] = int(a.gl_iters)
             else:
-                # Mel only. No waveform is written rather than a Griffin-Lim
-                # stand-in, because an unlabelled vocoder-free rendering shown
-                # as the system's output is a claim this project cannot make.
                 entry["audio"] = None
                 entry["mel_frames"] = int(sp.mel.shape[1])
+                entry["vocoder"] = None
             rendered.setdefault(s["id"], {})[rid] = entry
             print(f"  {s['id']}  {len(sp.tokens):>3} tokens  "
-                  f"{entry.get('audio') or 'mel only'}")
+                  f"{entry.get('audio') or 'mel only, silent'}"
+                  f"{'  [griffin-lim placeholder]' if entry.get('vocoder') == 'griffin-lim' else ''}")
 
     # The natural recording, at each rate an arm uses.
     refs: dict[str, dict[str, str]] = {}
@@ -150,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         "criterion": demo.get("criterion", ""),
         "generated_utc": datetime.datetime.now(datetime.timezone.utc)
                                   .isoformat(timespec="seconds"),
+        "griffin_lim": bool(a.griffin_lim),
+        "gl_iters": int(a.gl_iters) if a.griffin_lim else None,
         "runs": runs,
         "sentences": sentences,
         "failures": failures,

@@ -50,6 +50,8 @@
   audio { width: 100%; height: 34px; }
   .tok { color: var(--muted); margin-top: 7px; word-break: break-word; }
   .silent { color: var(--muted); font-size: .86rem; font-style: italic; }
+  .caveat { font-size: .82rem; color: var(--accent); margin-top: 6px;
+            border-left: 2px solid var(--accent); padding-left: 8px; }
 
   .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
          margin: 0 0 22px; }
@@ -104,28 +106,35 @@ function marked(text, words) {
     want.has(part) ? `<mark>${esc(part)}</mark>` : esc(part)).join("");
 }
 
-function armRow(label, sub, src, tokens, isRef) {
+function armRow(label, sub, src, tokens, isRef, vocoder) {
   const body = src
     ? `<audio controls preload="none" src="${esc(src)}"></audio>`
     : `<div class="silent">Silent: this architecture produces a mel
        spectrogram and its vocoder is still training.</div>`;
+  // A Griffin-Lim clip must say so wherever it is played. It recovers phase by
+  // iteration from magnitudes alone and has its own metallic signature, so a
+  // listener told "this is the model" would be judging the algorithm.
+  const caveat = vocoder === "griffin-lim"
+    ? `<div class="caveat">Griffin-Lim placeholder, not this system's vocoder.
+       Judge the words, not the tone: the neural vocoder is still training.</div>`
+    : "";
   const toks = tokens && tokens.length
     ? `<div class="tok">${tokens.length} tokens · ${esc(tokens.join(" "))}</div>` : "";
   return `<div class="arm${isRef ? " is-ref" : ""}">
     <div class="name">${esc(label)}<small>${esc(sub)}</small></div>
-    <div>${body}${toks}</div></div>`;
+    <div>${body}${caveat}${toks}</div></div>`;
 }
 
 function card(s) {
   const rates = Object.keys(s.reference || {});
   let rows = rates.map(r => armRow("Natural speech",
-    `the speaker, ${r} Hz`, s.reference[r], null, true)).join("");
+    `the speaker, ${r} Hz`, s.reference[r], null, true, "reference")).join("");
 
   for (const run of DATA.runs) {
     const got = (s.runs || {})[run.run_id];
     rows += armRow(run.run_id,
       `${run.architecture}, ${run.input_repr}`,
-      got && got.audio, got && got.tokens, false);
+      got && got.audio, got && got.tokens, false, got && got.vocoder);
   }
 
   const bits = [`<b>${s.medial}</b> medial`, `<b>${s.final}</b> word-final`,
@@ -173,6 +182,20 @@ function boot(data) {
     <dd>step ${esc(String(r.step))} · config <code>${esc(r.config_hash || "?")}</code>
         · commit <code>${esc((r.git_commit || "?").slice(0, 10))}</code>
         · ${esc(String(r.sample_rate))} Hz</dd>`).join("");
+  const gl = data.sentences.some(x => Object.values(x.runs || {})
+    .some(r => r && r.vocoder === "griffin-lim"));
+  if (gl) {
+    const note = document.createElement("p");
+    note.className = "caveat";
+    note.style.marginTop = "18px";
+    note.innerHTML = `Some arms below are played through a <b>Griffin-Lim
+      placeholder</b> rather than a vocoder, marked where they appear.
+      FastSpeech 2 emits a mel spectrogram and is silent on its own; its
+      neural vocoder is still training. Those clips show whether the words are
+      there. They say nothing about how the finished system will sound.`;
+    $("#bar").after(note);
+  }
+
   $("#footer").textContent =
     `${data.sentences.length} sentences from the ${data.split} split, ` +
     `${data.language}. Rendered ${data.generated_utc}. ` +
