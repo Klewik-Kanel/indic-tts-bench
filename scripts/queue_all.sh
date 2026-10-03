@@ -32,6 +32,15 @@ PY=${PY:-/workspace/venv/bin/python}
 TENANT_WAIT_MIN=${TENANT_WAIT_MIN:-60}     # how long to wait for a tenant to go
 OURS_WAIT_H=${OURS_WAIT_H:-30}             # how long to wait for our own runs
 OFFLOAD=${OFFLOAD:-1}                      # back up after each pair
+# scripts/offload.py already defaults --repo-id to Klewik/indic-tts-bench, but
+# `offload` below guarded on HF_REPO being non-empty and skipped the call
+# entirely without it. A chain armed from a shell that never exported HF_REPO
+# therefore ran the whole matrix and backed up nothing, silently, which is the
+# exact failure the offload step exists to prevent. The default is set here so
+# it is reachable. `-` rather than `:-` on purpose: an explicitly empty
+# HF_REPO=  still disables backups, which is the only way to turn them off
+# other than OFFLOAD=0.
+HF_REPO=${HF_REPO-Klewik/indic-tts-bench}
 
 # Pairs, in priority order. r03 is absent on purpose: Matcha is future work as
 # of 2 October, see FUTURE_WORK in src/train/config.py.
@@ -62,7 +71,14 @@ PAIRS=(
   "r11 r12"      # VITS ladder, 5 h and 1 h
   "r09 r10"      # FastSpeech 2 ladder, 30 min and 10 min. Before the VITS
                  # small rungs because it buys the same information — how the
-                 # smallest rungs behave — for 4.2 h instead of 9.7.
+                 # smallest rungs behave — for 6.24 h instead of 18.58.
+                 #
+                 # Those hours were 4.2 and 9.7 here until 3 Oct, when r22 and
+                 # r23 were measured at 1.5153 and 1.4954 it/s. The budget is a
+                 # fixed 100,000 steps, so the rung does not change the cost:
+                 # every VITS pair is 18.58 h and every FastSpeech 2 pair 6.24 h
+                 # at the 8.9 it/s aggregate. The ordering argument survives the
+                 # correction; the numbers did not.
   "r13 r14"      # VITS ladder, 30 min and 10 min. LAST of everything: the
                  # smallest rungs are where seed variance is widest and the
                  # claims thinnest, and this is the most expensive pair to
