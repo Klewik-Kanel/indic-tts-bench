@@ -148,12 +148,38 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
         if per_utt:
             passes.append({"draw": d, "per_utt": per_utt,
                            "parts": parts, "pairs": pairs})
+        else:
+            # Every utterance in this draw failed. Continuing would repeat the
+            # same failure for every remaining draw, and the per-draw progress
+            # counter would keep printing 50/50 while nothing was transcribed,
+            # which is what happened on 4 October: one AttributeError was
+            # reported twice and then 40 passes ran in silence. Stop here and
+            # say so.
+            print(f"    {rid}/{backend_name} draw {d}: ALL "
+                  f"{len(rows_in)} utterances failed, abandoning the "
+                  f"remaining draws", flush=True)
+            break
 
     record["failures"] = failures
     record["draws"] = len(passes)
+    if failures:
+        # Distinct causes with counts, so a wall of identical tracebacks
+        # becomes one line that names the bug.
+        kinds: dict[str, int] = {}
+        for f in failures:
+            kinds[str(f.get("error"))] = kinds.get(str(f.get("error")), 0) + 1
+        record["failure_kinds"] = kinds
+        print(f"    {rid}/{backend_name}: {len(failures)} failures, "
+              f"{len(kinds)} distinct:", flush=True)
+        for msg, count in sorted(kinds.items(), key=lambda kv: -kv[1])[:5]:
+            print(f"      {count:5d}x {msg[:110]}", flush=True)
     if not passes:
         record["n"] = 0
-        record["skipped"] = "nothing transcribed; see failures"
+        record["skipped"] = (
+            f"nothing transcribed: {len(failures)} failures. "
+            + "; ".join(f"{c}x {m[:70]}"
+                        for m, c in sorted(record.get("failure_kinds", {}).items(),
+                                           key=lambda kv: -kv[1])[:2]))
         return record
     record["n"] = len(passes[0]["per_utt"])
 

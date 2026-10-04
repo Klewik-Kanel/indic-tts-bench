@@ -111,3 +111,65 @@ def test_the_harness_warns_when_a_single_draw_is_used_on_vits():
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
     assert "a.draws < 2" in src
     assert "reversed the sign" in src
+
+
+# --- the device check, and failing loudly -----------------------------------
+
+def test_the_cuda_check_works_on_a_string_and_on_a_device_object():
+    """Every caller passes a string. `.to("cpu")` works, so nothing had ever
+    needed Bundle.device to be a torch.device, and asking it for `.type`
+    raised AttributeError on all 250 synthesis calls per run on 4 October.
+    """
+    import pathlib
+    src = pathlib.Path("src/export/synthesize.py").read_text()
+    body = src[src.index("def synthesize("):]
+    body = body[:body.index("t0 = time.perf_counter()")]
+    assert "self.device.type" not in body, "device may be a plain string"
+    assert 'str(self.device).startswith("cuda")' in body
+
+    class Devicey:
+        def __init__(self, t):
+            self._t = t
+
+        def __str__(self):
+            return self._t
+
+    for spelling, want in (("cpu", False), ("cuda", True), ("cuda:0", True),
+                           ("cuda:3", True)):
+        assert str(spelling).startswith("cuda") is want, spelling
+        assert str(Devicey(spelling)).startswith("cuda") is want, spelling
+
+
+def test_load_passes_device_as_a_string_so_the_check_must_accept_one():
+    import inspect
+
+    from src.export.synthesize import Bundle, load
+    assert inspect.signature(Bundle.__init__).parameters["device"].default == "cpu"
+    assert inspect.signature(load).parameters["device"].default == "cpu"
+
+
+def test_a_draw_in_which_everything_fails_abandons_the_rest():
+    """40 passes ran in silence on 4 October because the loop kept going and
+    the progress counter kept printing 50/50."""
+    import pathlib
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("for d in range(max(1, int(draws))):"):]
+    body = body[:body.index("record[\"failures\"]")]
+    assert "ALL" in body and "abandoning" in body
+    assert "break" in body
+
+
+def test_failures_are_summarised_by_distinct_cause():
+    """One AttributeError repeated 250 times should read as one line naming
+    the bug, not as two tracebacks and 248 silences."""
+    import pathlib
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    assert "failure_kinds" in src
+    assert "distinct" in src
+
+
+def test_the_skip_reason_names_the_cause_not_just_the_count():
+    import pathlib
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    i = src.index('"nothing transcribed')
+    assert "failure_kinds" in src[i:i + 500]

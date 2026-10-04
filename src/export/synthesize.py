@@ -247,7 +247,13 @@ class Bundle:
         if seed is None:
             seed = draw_seed(self.manifest["run_id"], text, draw)
         torch.manual_seed(seed)
-        if self.device.type == "cuda":
+        # `device` is whatever the caller passed, and every caller passes a
+        # string: `.to("cpu")` works, so nothing had ever needed it to be a
+        # torch.device. Asking it for `.type` raised AttributeError on all 250
+        # synthesis calls per run on 4 October, and because the harness logs
+        # only its first two tracebacks the rest failed in silence and the run
+        # reported "nothing transcribed". Tested on the string.
+        if str(self.device).startswith("cuda"):
             torch.cuda.manual_seed_all(seed)
 
         t0 = time.perf_counter()
