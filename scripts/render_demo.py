@@ -59,6 +59,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="bundle directories; defaults to every one in exports/")
     ap.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--vocoder", type=pathlib.Path, default=None,
+                    help="a vocoder BUNDLE directory, e.g. exports/r06_step18000. "
+                         "Its sample rate and language are checked against each "
+                         "mel-only bundle before anything is rendered. With this, "
+                         "--griffin-lim is unnecessary and the clips are real "
+                         "system output rather than a labelled placeholder.")
     ap.add_argument("--griffin-lim", action="store_true",
                     help="make mel-only arms audible with a labelled "
                          "Griffin-Lim placeholder, not a vocoder")
@@ -84,7 +90,15 @@ def main(argv: list[str] | None = None) -> int:
     rates_needed: set[int] = set()
 
     for bundle_dir in bundles:
-        b = load(bundle_dir, device=a.device)
+        # A vocoder is attached only to the bundles that need one, so passing
+        # --vocoder with a VITS bundle in the list is not an error.
+        voc = a.vocoder if a.vocoder else None
+        try:
+            b = load(bundle_dir, device=a.device, vocoder=voc)
+        except SystemExit as exc:
+            if voc is None or "end to end" not in str(exc):
+                raise
+            b = load(bundle_dir, device=a.device)
         if b.manifest["language"] != a.lang:
             print(f"  skipping {bundle_dir.name}: trained on "
                   f"{b.manifest['language']}, not {a.lang}")
@@ -122,7 +136,17 @@ def main(argv: list[str] | None = None) -> int:
                 write_wav(a.out / rel, sp.waveform, sp.sample_rate)
                 entry["audio"] = rel
                 entry["audio_seconds"] = round(sp.audio_seconds, 3)
-                entry["vocoder"] = "end-to-end"
+                # A vocoded mel is NOT end to end, and labelling it so would
+                # hide which vocoder produced the audio in a page whose whole
+                # job is provenance.
+                vinfo = sp.extras.get("vocoder")
+                if vinfo:
+                    entry["vocoder"] = (f"hifigan:{vinfo['run_id']}"
+                                        f"@{vinfo.get('step')}")
+                    entry["vocoder_detail"] = vinfo
+                    entry["mel_frames"] = int(sp.mel.shape[1])
+                else:
+                    entry["vocoder"] = "end-to-end"
             elif a.griffin_lim:
                 # A labelled placeholder, recorded as one. The page shows the
                 # label; an unlabelled vocoder-free rendering presented as the
@@ -177,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         "criterion": demo.get("criterion", ""),
         "generated_utc": datetime.datetime.now(datetime.timezone.utc)
                                   .isoformat(timespec="seconds"),
+        "vocoder_bundle": str(a.vocoder) if a.vocoder else None,
         "griffin_lim": bool(a.griffin_lim),
         "gl_iters": int(a.gl_iters) if a.griffin_lim else None,
         "runs": runs,

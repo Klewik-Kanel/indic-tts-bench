@@ -53,6 +53,9 @@ END_TO_END = ("vits",)
 
 SUPPORTED_BUNDLE_VERSION = 3
 
+# Architectures that map mel to waveform and carry no text side.
+VOCODER_ARCHITECTURES = frozenset({"hifigan"})
+
 # How a synthesis draw is seeded. Keyed on the run, the text and the draw
 # index, so an utterance's audio does not depend on how many utterances came
 # before it and scoring a subset reproduces the full set's audio exactly.
@@ -133,6 +136,7 @@ class Bundle:
         self.root = pathlib.Path(root)
         self.manifest = read_manifest(self.root)
         self.device = device
+        self.vocoder: "Bundle | None" = None
         arch = self.manifest["architecture"]
         self.needs_vocoder = bool(
             self.manifest.get("needs_vocoder", arch not in END_TO_END))
@@ -200,6 +204,85 @@ class Bundle:
         if self.encoder is None:
             raise SystemExit(f"{self.root}: this bundle has no text front end")
         return self.encoder.tokens(text)
+
+    @property
+    def is_vocoder(self) -> bool:
+        """A bundle that maps mel to waveform and has no text side."""
+        return self.manifest["architecture"] in VOCODER_ARCHITECTURES
+
+    def attach_vocoder(self, voc: "Bundle") -> "Bundle":
+        """Give a mel-only bundle the vocoder that turns its mels into audio.
+
+        Checked rather than assumed, because a mel handed to a vocoder built on
+        different analysis parameters produces audio that is recognisably
+        speech and quietly wrong, which is the one failure mode this whole
+        export path exists to prevent.
+
+        The sample rate has to match: r06 is the Hindi vocoder at 22.05 kHz and
+        r17 the Marathi one, and crossing them would put a speaker mismatch
+        inside the control that exists to isolate language. The language is
+        checked too, for the same reason, and a mismatch raises rather than
+        warning.
+        """
+        if not voc.is_vocoder:
+            raise SystemExit(
+                f"{voc.root}: architecture {voc.manifest['architecture']!r} is "
+                f"not a vocoder; expected one of {sorted(VOCODER_ARCHITECTURES)}")
+        if not self.needs_vocoder:
+            raise SystemExit(
+                f"{self.root}: {self.manifest['architecture']} is end to end "
+                "and must not be given a vocoder")
+        if int(voc.sample_rate) != int(self.sample_rate):
+            raise SystemExit(
+                f"sample rate mismatch: {self.manifest['run_id']} is "
+                f"{self.sample_rate} Hz and {voc.manifest['run_id']} is "
+                f"{voc.sample_rate} Hz. A mel on the wrong rate sounds like "
+                "speech and is wrong.")
+        if voc.manifest["language"] != self.manifest["language"]:
+            raise SystemExit(
+                f"language mismatch: {self.manifest['run_id']} is "
+                f"{self.manifest['language']} and {voc.manifest['run_id']} is "
+                f"{voc.manifest['language']}. Each language has its own "
+                "vocoder so a speaker mismatch cannot enter the control.")
+        self.vocoder = voc
+        return self
+
+    def vocode(self, mel):
+        """Waveform from a log-mel, shaped [n_mels, T].
+
+        coqui's generator takes [B, n_mels, T]. The mel this project produces
+        and the mel `synthesize` returns are both [n_mels, T], so the batch
+        axis is added here and nowhere else.
+        """
+        # Every check runs BEFORE torch is imported. Guards behind a heavy
+        # import are untestable without the package and slow to fail with it,
+        # which is the same mistake src/export/griffinlim.py already had.
+        import numpy as np
+
+        if not self.is_vocoder:
+            raise SystemExit(f"{self.root}: not a vocoder bundle")
+        arr = np.asarray(mel, dtype="float32")
+        if arr.ndim != 2:
+            raise ValueError(f"mel must be 2-D [n_mels, T], got {arr.shape}")
+        # The band count lives under "audio", not at the top level. A
+        # top-level .get with a default of 80 would have agreed with the real
+        # value by accident and stopped checking the day it changed.
+        audio = self.manifest.get("audio") or {}
+        if "n_mels" not in audio:
+            raise SystemExit(
+                f"{self.root}: manifest has no audio.n_mels, so the mel this "
+                "vocoder expects cannot be checked")
+        want = int(audio["n_mels"])
+        if arr.shape[0] != want:
+            raise ValueError(
+                f"mel has {arr.shape[0]} bands, this vocoder expects {want}. "
+                "A transposed mel is the usual cause.")
+
+        import torch
+        x = torch.from_numpy(arr).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            out = self.model.inference(x)
+        return out.detach().cpu().reshape(-1).numpy().astype("float32")
 
     def synthesize(self, text: str, draw: int = 0,
                    seed: int | None = None) -> Speech:
@@ -271,6 +354,17 @@ class Bundle:
             # orientation the vocoder and features.compute both use.
             sp.mel = got[0].transpose(0, 1).numpy().astype(np.float32)
             sp.extras["mel_params"] = mel_params(self.sample_rate)
+            if self.vocoder is not None:
+                # The mel stays on the Speech alongside the waveform. The
+                # duration measure reads frame counts and must not start
+                # depending on whether a vocoder happened to be attached.
+                sp.waveform = self.vocoder.vocode(sp.mel)
+                sp.extras["vocoder"] = {
+                    "run_id": self.vocoder.manifest["run_id"],
+                    "step": self.vocoder.manifest.get("step"),
+                    "config_hash": self.vocoder.manifest.get("config_hash"),
+                    "bundle": self.vocoder.root.name,
+                }
         else:
             # [B, 1, N] -> [N]
             sp.waveform = got.reshape(-1).numpy().astype(np.float32)
@@ -279,8 +373,18 @@ class Bundle:
         return sp
 
 
-def load(root: pathlib.Path | str, device: str = "cpu") -> Bundle:
-    return Bundle(pathlib.Path(root), device=device)
+def load(root: pathlib.Path | str, device: str = "cpu",
+         vocoder: pathlib.Path | str | None = None) -> Bundle:
+    """A bundle, with its vocoder attached when one is given.
+
+    `vocoder` is another bundle directory, not a bare checkpoint: a vocoder
+    exported as a bundle carries its own manifest, so the rate, language and
+    provenance checks in `attach_vocoder` have something to check against.
+    """
+    b = Bundle(pathlib.Path(root), device=device)
+    if vocoder:
+        b.attach_vocoder(Bundle(pathlib.Path(vocoder), device=device))
+    return b
 
 
 def write_wav(path: pathlib.Path, waveform, sample_rate: int) -> None:

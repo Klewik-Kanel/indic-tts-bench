@@ -59,7 +59,8 @@ def _cap_threads(n: int, device: str) -> None:
 
 def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
                  split: str, limit: int | None, device: str,
-                 out_dir: pathlib.Path, draws: int = 1) -> dict:
+                 out_dir: pathlib.Path, draws: int = 1,
+                 vocoder: pathlib.Path | None = None) -> dict:
     from scripts.evaluate import load_split
     from src.analysis import position_errors as pe
     from src.eval import asr
@@ -83,7 +84,7 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     if manifest["language"] != lang:
         record["skipped"] = f"trained on {manifest['language']}, not {lang}"
         return record
-    if manifest.get("needs_vocoder"):
+    if manifest.get("needs_vocoder") and not vocoder:
         record["skipped"] = (
             "mel-only architecture: intelligibility needs a waveform and the "
             "vocoder has not trained. The duration measure in "
@@ -93,7 +94,14 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     engine = asr.backend(backend_name, lang, device=device)
     record["asr_detail"] = engine.describe()
 
-    b = load(bundle_dir, device="cpu")
+    b = load(bundle_dir, device="cpu",
+             vocoder=vocoder if manifest.get("needs_vocoder") else None)
+    if b.vocoder is not None:
+        record["vocoder"] = {
+            "run_id": b.vocoder.manifest["run_id"],
+            "step": b.vocoder.manifest.get("step"),
+            "config_hash": b.vocoder.manifest.get("config_hash"),
+        }
     sr = b.sample_rate
     g2p = G2P.for_language(lang)
     rows_in = load_split(lang, split)
@@ -535,6 +543,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip the ground-truth pass. The synthesis numbers "
                          "then have no denominator, so this is for debugging "
                          "only")
+    ap.add_argument("--vocoder", type=pathlib.Path, default=None,
+                    help="a vocoder BUNDLE directory for the mel-only arms, "
+                         "e.g. exports/r06_step18000. Without it, FastSpeech 2 "
+                         "runs are reported as unscorable rather than skipped.")
     ap.add_argument("--draws", type=int, default=1,
                     help="synthesis draws per utterance. VITS samples at "
                          "inference, so one seeded draw is reproducible but "
@@ -604,7 +616,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 records.append(score_bundle(d, a.lang, name, a.split,
                                             a.limit, a.device, out_dir,
-                                            draws=a.draws))
+                                            draws=a.draws,
+                                            vocoder=a.vocoder))
             except Exception as exc:                          # noqa: BLE001
                 traceback.print_exc()
                 records.append({"run_id": d.name, "skipped":
