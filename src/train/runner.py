@@ -422,6 +422,23 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
                 fh.write(json.dumps({"step": n, "val_mel_l1": val}) + "\n")
             if val is not None:
                 print(f"{run_id}: step {n}, held-out mel L1 {val:.6f}", flush=True)
+            # Save on a new best, BEFORE asking whether to stop.
+            #
+            # r06 and r17 stopped correctly on 4 October and neither kept the
+            # weights it stopped for. Evaluation ran every 2,000 steps and
+            # checkpoints every 5,000, so the two intervals never coincided:
+            # r06's best was 0.246545 at step 12,000, its saved checkpoints
+            # were 15,000 and 18,000, and the exported generator was step
+            # 18,000 at 0.262312, worse than the best by 6.40 per cent and by
+            # 2.25 standard deviations of the tail noise. A criterion that
+            # picks a step and then discards that step's weights is not a
+            # stopping criterion; it is a step counter.
+            was_best = (val is not None
+                        and (stopper.best is None or val < stopper.best))
+            if was_best and n % ckpt_every != 0:
+                save_checkpoint(n)
+                (out_dir / "best.json").write_text(json.dumps(
+                    {"step": n, "val": val}, indent=1), encoding="utf-8")
             if stopper.update(n, val):
                 print(f"{run_id}: stopping at step {n}: {stopper.why()}",
                       flush=True)
