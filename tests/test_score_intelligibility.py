@@ -256,7 +256,12 @@ def test_the_floor_reads_wav16_and_never_resamples_a_reference():
     """Both recognisers want 16 kHz and the corpus already has it. A resampled
     reference would put a filter between the reference and itself."""
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
-    floor = src[src.index("def reference_floor("):src.index("def _select(")]
+    start = src.index("def reference_floor(")
+    # End at the NEXT top-level def, not at a named one: slicing to _select
+    # swept in vocoder_ceiling when that was added between them, and
+    # vocoder_ceiling reads wav22 legitimately.
+    end = src.index("\ndef ", start + 1)
+    floor = src[start:end]
     assert '"wav16"' in floor
     assert "wav22" not in floor
     assert "to_target_sr" not in floor, "a reference must not be resampled"
@@ -462,3 +467,74 @@ def test_the_merge_and_the_table_pool_the_same_characters():
     out = mod._merge_draws(passes)
     assert len(out) == 50
     assert sum(r["final_chars"] for r in out) == 50 * 10 * 5
+
+
+# --- the vocoder ceiling ----------------------------------------------------
+
+def test_the_ceiling_table_says_what_it_is():
+    """A reader must not mistake it for a run's score or for the floor."""
+    out = mod.ceiling_table([])
+    assert "VOCODER CEILING" in out
+    assert "real mels" in out
+
+
+def test_the_ceiling_table_names_the_vocoder():
+    """Two vocoders exist, r06 and r17, and a ceiling is only a bound on the
+    arms that went through the same one."""
+    c = {"backend": "mms", "vocoder": "r06", "vocoder_step": 18000, "n": 50,
+         "corpus_cer": 0.31,
+         "classes": {"final": 0.4, "medial": 0.3, "neither": 0.28}}
+    line = mod.ceiling_table([c]).splitlines()[-1]
+    assert "r06" in line and "0.3100" in line
+
+
+def test_a_failed_ceiling_prints_its_reason():
+    c = {"backend": "mms", "vocoder": "r06", "n": 0,
+         "error": "nothing transcribed from the vocoded ground truth"}
+    assert "nothing transcribed" in mod.ceiling_table([c])
+
+
+def test_the_ceiling_reads_the_master_rate_for_a_22k_vocoder():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def vocoder_ceiling("):src.index("def ceiling_table(")]
+    assert '"wav22" if sr == 22050 else "wav16"' in body
+
+
+def test_the_ceiling_uses_the_projects_own_mel_implementation():
+    """A second copy of the analysis could flatter the ceiling. features is
+    the one implementation that produced every training mel."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def vocoder_ceiling("):src.index("def ceiling_table(")]
+    assert "F.mel_from_array" in body
+    assert "librosa" not in body
+
+
+def test_the_ceiling_transposes_the_mel_for_the_vocoder():
+    """features returns (frames, n_mels); vocode wants [n_mels, T]. Getting
+    this wrong produces plausible audio, which is the whole hazard."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def vocoder_ceiling("):src.index("def ceiling_table(")]
+    assert "voc.vocode(mel.T)" in body
+
+
+def test_the_ceiling_refuses_a_non_vocoder_bundle():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def vocoder_ceiling("):src.index("def ceiling_table(")]
+    assert "not voc.is_vocoder" in body
+    assert "raise SystemExit" in body
+
+
+def test_ceiling_without_a_vocoder_is_an_error_not_a_silent_skip():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    assert "--ceiling needs --vocoder" in src
+
+
+def test_ceiling_only_loads_no_acoustic_bundle():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def main("):]
+    assert body.index("a.ceiling_only") < body.index("score_bundle(")
+
+
+def test_the_ceiling_is_written_into_the_combined_json():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    assert '"vocoder_ceiling": ceilings' in src

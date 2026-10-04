@@ -362,6 +362,103 @@ def reference_floor(backend_name: str, lang: str, split: str,
     return out
 
 
+def vocoder_ceiling(vocoder_dir: pathlib.Path, backend_name: str, lang: str,
+                    split: str, limit: int | None, device: str) -> dict:
+    """What the vocoder can reach on mels that are already correct.
+
+    The recogniser floor says how well the recogniser reads real recordings.
+    This says how well it reads the vocoder's rendering of the REAL mels. Any
+    FastSpeech 2 score is bounded by it, because that arm's audio goes through
+    the same vocoder, so it separates two suspects that are otherwise stacked:
+    a bad mel from the acoustic model, and a bad vocoder.
+
+    It was needed the moment r01 and r04 came back at a character error rate of
+    0.9932 and 0.9924 with edits equal to reference characters, which is the
+    "transcribed nothing" ceiling rather than a bad score. Attributing that to
+    FastSpeech 2 without this measurement would be attributing it to whichever
+    suspect was named first. r06's own held-out mel reconstruction error is
+    0.2465 against 0.1434 for a Griffin-Lim round trip through the same
+    quantity, so the vocoder is 1.72 times worse than an algorithm that needs
+    no training, which is reason enough not to guess.
+
+    The mel comes from features._spec_and_mel, the one implementation that
+    produced every training mel, so the ceiling cannot be flattered by a second
+    copy of the analysis.
+    """
+    import soundfile as sf
+
+    from scripts.evaluate import load_split
+    from src.analysis import position_errors as pe
+    from src.eval import asr
+    from src.export.synthesize import Bundle
+    from src.g2p import G2P
+    from src.train import features as F
+
+    voc = Bundle(pathlib.Path(vocoder_dir), device=device)
+    if not voc.is_vocoder:
+        raise SystemExit(f"{vocoder_dir}: not a vocoder bundle")
+    engine = asr.backend(backend_name, lang, device=device)
+    g2p = G2P.for_language(lang)
+    sr = voc.sample_rate
+    col = "wav22" if sr == 22050 else "wav16"
+    rows = load_split(lang, split)
+    if limit:
+        rows = rows[:limit]
+
+    pairs, parts, failures = [], [], []
+    for row in rows:
+        path = INTERIM / lang / row.get(col, "")
+        if not row.get(col) or not path.exists():
+            failures.append({"id": row["id"], "error": f"no {col} at {path}"})
+            continue
+        try:
+            wav, got = sf.read(str(path), dtype="float32")
+            if got != sr:
+                failures.append({"id": row["id"],
+                                 "error": f"{col} is {got} Hz, vocoder is {sr}"})
+                continue
+            mel = F.mel_from_array(wav, sr)            # (frames, n_mels)
+            hyp = engine.transcribe(voc.vocode(mel.T), sr)
+            pairs.append((row["text"], hyp))
+            parts.append(pe.partition(g2p, row["text"], hyp))
+        except Exception as exc:                              # noqa: BLE001
+            failures.append({"id": row["id"],
+                             "error": f"{type(exc).__name__}: {exc}"})
+    out = {"backend": backend_name, "n": len(pairs),
+           "vocoder": voc.manifest["run_id"],
+           "vocoder_step": voc.manifest.get("step"),
+           "failures": failures}
+    if not pairs:
+        out["error"] = "nothing transcribed from the vocoded ground truth"
+        return out
+    pooled = pe.accumulate(parts)
+    out["corpus_cer"] = asr.corpus_cer(pairs)
+    out["classes"] = {c: (pooled["rates"][c].cer
+                          if pooled["rates"][c].has_rate else None)
+                      for c in pe.CLASSES}
+    out["examples"] = [{"reference": r, "hypothesis": h} for r, h in pairs[:3]]
+    return out
+
+
+def ceiling_table(ceilings: list[dict]) -> str:
+    head = (f"{'asr':16s} {'vocoder':10s} {'n':>4s} {'CER':>7s} "
+            f"{'final':>7s} {'medial':>7s} {'none':>7s}")
+    lines = ["VOCODER CEILING (the real mels, through this vocoder)",
+             head, "-" * len(head)]
+    for c in ceilings:
+        if c.get("error"):
+            lines.append(f"{c['backend'][:16]:16s} "
+                         f"{str(c.get('vocoder'))[:10]:10s} "
+                         f"{c.get('n', 0):4d}   {c['error']}")
+            continue
+        cl = c["classes"]
+        lines.append(f"{c['backend'][:16]:16s} {str(c['vocoder'])[:10]:10s} "
+                     f"{c['n']:4d} {_fmt(c['corpus_cer']):>7s} "
+                     f"{_fmt(cl['final']):>7s} {_fmt(cl['medial']):>7s} "
+                     f"{_fmt(cl['neither']):>7s}")
+    return "\n".join(lines)
+
+
 def _merge_draws(passes: list[dict]) -> list[dict]:
     """One row per utterance, with every draw's counts summed into it.
 
@@ -594,6 +691,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--boot", type=int, default=2000,
                     help="paired resamples for the interval; 0 skips it")
     ap.add_argument("--boot-seed", type=int, default=0)
+    ap.add_argument("--ceiling", action="store_true",
+                    help="also transcribe the REAL mels rendered through "
+                         "--vocoder. Any mel-only arm's score is bounded by "
+                         "this, so it separates a bad acoustic mel from a bad "
+                         "vocoder. Needs --vocoder.")
+    ap.add_argument("--ceiling-only", action="store_true",
+                    help="measure that ceiling and stop. Loads no acoustic "
+                         "bundle.")
     ap.add_argument("--floor-only", action="store_true",
                     help="transcribe the real recordings and stop. The fastest "
                          "check that a recogniser loaded correctly")
@@ -639,6 +744,34 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  {f['backend']} ref: {ex['reference']}")
                     print(f"  {f['backend']} hyp: {ex['hypothesis']}")
         print()
+    ceilings = []
+    if (a.ceiling or a.ceiling_only) and a.vocoder:
+        for name in names:
+            print(f"== {name}: vocoder ceiling via {a.vocoder}", flush=True)
+            try:
+                ceilings.append(vocoder_ceiling(a.vocoder, name, a.lang,
+                                                a.split, a.limit, a.device))
+            except Exception as exc:                          # noqa: BLE001
+                traceback.print_exc()
+                ceilings.append({"backend": name, "n": 0,
+                                 "error": f"{type(exc).__name__}: {exc}"})
+        print()
+        print(ceiling_table(ceilings))
+        for c in ceilings:
+            for ex in c.get("examples", []):
+                print(f"  {c['backend']} ref: {ex['reference']}")
+                print(f"  {c['backend']} hyp: {ex['hypothesis']}")
+        print()
+    elif (a.ceiling or a.ceiling_only) and not a.vocoder:
+        print("--ceiling needs --vocoder", file=sys.stderr)
+        return 1
+    if a.ceiling_only:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"vocoder_ceiling_{a.lang}.json").write_text(
+            json.dumps(ceilings, indent=1, ensure_ascii=False),
+            encoding="utf-8")
+        return 0
+
     if a.floor_only:
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / f"asr_floor_{a.lang}.json").write_text(
@@ -674,6 +807,9 @@ def main(argv: list[str] | None = None) -> int:
     if floors:
         print(floor_table(floors))
         print()
+    if ceilings:
+        print(ceiling_table(ceilings))
+        print()
     print(table(records))
     print()
     print(counts_table(records))
@@ -699,7 +835,8 @@ def main(argv: list[str] | None = None) -> int:
         + table(records) + "\n\n" + counts_table(records)
         + (("\n\n" + boot) if boot else "") + "\n", encoding="utf-8")
     (out_dir / f"intelligibility_{a.lang}_{stamp}.json").write_text(
-        json.dumps({"reference_floor": floors, "runs": records},
+        json.dumps({"reference_floor": floors,
+                    "vocoder_ceiling": ceilings, "runs": records},
                    indent=1, ensure_ascii=False), encoding="utf-8")
     return 0
 
