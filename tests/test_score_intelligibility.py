@@ -381,3 +381,84 @@ def test_the_per_utterance_rows_are_stripped_from_the_combined_file():
     body = src[src.index("def main("):]
     assert 'r.pop("utterances", None)' in body
     assert body.index("bootstrap_table(") < body.index('r.pop("utterances"')
+
+
+# --- merging draws for the bootstrap ----------------------------------------
+
+def _pass(draw, rows):
+    return {"draw": draw, "per_utt": rows, "parts": [], "pairs": []}
+
+
+def _u(uid, fe, fc, me=0, mc=0, ne=0, nc=0, ins=0):
+    return {"id": uid, "final_edits": fe, "final_chars": fc,
+            "medial_edits": me, "medial_chars": mc,
+            "neither_edits": ne, "neither_chars": nc, "insertions": ins}
+
+
+def test_draws_are_summed_into_one_row_per_utterance():
+    """The bootstrap read draw 0 alone while the table pooled all five, so on
+    4 October the table said +0.0263 and the bootstrap beside it said +0.0057
+    for the same quantity."""
+    passes = [_pass(0, [_u("a", 1, 10), _u("b", 2, 20)]),
+              _pass(1, [_u("a", 3, 10), _u("b", 4, 20)])]
+    out = mod._merge_draws(passes)
+    assert [r["id"] for r in out] == ["a", "b"]
+    assert out[0]["final_edits"] == 4 and out[0]["final_chars"] == 20
+    assert out[1]["final_edits"] == 6 and out[1]["final_chars"] == 40
+    assert out[0]["draws"] == 2
+
+
+def test_the_merged_order_follows_the_first_draw():
+    """Two arms scored on the same split must come out in the same order, or
+    the paired bootstrap's order check passes only by luck."""
+    passes = [_pass(0, [_u("x", 1, 10), _u("y", 1, 10), _u("z", 1, 10)])]
+    assert [r["id"] for r in mod._merge_draws(passes)] == ["x", "y", "z"]
+
+
+def test_an_utterance_missing_from_a_later_draw_keeps_the_draws_it_has():
+    """Its denominator is smaller, which is correct. Dropping the row would
+    silently change which utterances the interval is over."""
+    passes = [_pass(0, [_u("a", 1, 10), _u("b", 1, 10)]),
+              _pass(1, [_u("a", 1, 10)])]
+    out = mod._merge_draws(passes)
+    assert [r["id"] for r in out] == ["a", "b"]
+    assert out[0]["draws"] == 2 and out[0]["final_chars"] == 20
+    assert out[1]["draws"] == 1 and out[1]["final_chars"] == 10
+
+
+def test_insertions_are_summed_too():
+    passes = [_pass(0, [_u("a", 0, 10, ins=2)]),
+              _pass(1, [_u("a", 0, 10, ins=3)])]
+    assert mod._merge_draws(passes)[0]["insertions"] == 5
+
+
+def test_every_class_is_merged_not_just_final():
+    passes = [_pass(0, [_u("a", 1, 10, me=2, mc=8, ne=3, nc=20)]),
+              _pass(1, [_u("a", 1, 10, me=2, mc=8, ne=3, nc=20)])]
+    r = mod._merge_draws(passes)[0]
+    assert (r["medial_edits"], r["medial_chars"]) == (4, 16)
+    assert (r["neither_edits"], r["neither_chars"]) == (6, 40)
+
+
+def test_a_single_draw_merges_to_itself():
+    passes = [_pass(0, [_u("a", 1, 10, me=1, mc=5, ne=1, nc=10)])]
+    r = mod._merge_draws(passes)[0]
+    assert r["final_edits"] == 1 and r["final_chars"] == 10
+    assert r["draws"] == 1
+
+
+def test_the_record_uses_the_merge_rather_than_the_first_draw():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def score_bundle("):src.index("def reference_floor(")]
+    assert 'record["utterances"] = _merge_draws(passes)' in body
+    assert 'passes[0]["per_utt"]' not in body.split('record["utterances"]')[1]
+
+
+def test_the_merge_and_the_table_pool_the_same_characters():
+    """The whole point: the interval and the rate beside it must be over the
+    same sample. Five draws of 50 utterances is 5x the characters."""
+    rows = [_u(f"u{i}", 1, 10) for i in range(50)]
+    passes = [_pass(d, rows) for d in range(5)]
+    out = mod._merge_draws(passes)
+    assert len(out) == 50
+    assert sum(r["final_chars"] for r in out) == 50 * 10 * 5

@@ -245,10 +245,23 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
             record["contrast"][cls]["excess_mean_over_draws"] = _mean(xs)
     record["insertions"] = pooled_all["insertions"]
 
-    # Kept on the record so the two arms of a pair can be resampled together.
-    # Only the FIRST draw, because the paired bootstrap needs one row per
-    # utterance per arm and draws are not utterances.
-    record["utterances"] = passes[0]["per_utt"]
+    # Kept on the record so the two arms of a pair can be resampled together,
+    # with the DRAWS MERGED per utterance.
+    #
+    # This was the first draw alone, on the reasoning that the bootstrap needs
+    # one row per utterance and draws are not utterances. Both halves of that
+    # are true and the conclusion was wrong: it left the interval computed from
+    # a fifth of the data the table's class rates pool, so on 4 October the
+    # table reported a final-site excess difference of +0.0263 while the
+    # bootstrap beside it reported +0.0057. Two numbers in one table from two
+    # different samples.
+    #
+    # Merging keeps the utterance as the sampling unit, which is what the
+    # resampling is about, and gives each row the draws it actually has. A
+    # resample then draws utterances and carries all of each one's draws, so
+    # draw variance stays inside the row rather than becoming another thing
+    # being resampled.
+    record["utterances"] = _merge_draws(passes)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / f"intel_{rid}_{backend_name}.json").write_text(
         json.dumps({**record,
@@ -347,6 +360,31 @@ def reference_floor(backend_name: str, lang: str, split: str,
     out["contrast"] = pe.contrast(pooled)
     out["examples"] = [{"reference": r, "hypothesis": h} for r, h in pairs[:3]]
     return out
+
+
+def _merge_draws(passes: list[dict]) -> list[dict]:
+    """One row per utterance, with every draw's counts summed into it.
+
+    Order follows the first draw, so two arms scored on the same split come
+    out in the same order and the paired bootstrap's order check passes for
+    the right reason rather than by luck.
+    """
+    from src.analysis import position_errors as pe
+
+    order = [u["id"] for u in passes[0]["per_utt"]]
+    merged: dict[str, dict] = {}
+    for pz in passes:
+        for u in pz["per_utt"]:
+            row = merged.setdefault(u["id"], {"id": u["id"], "draws": 0})
+            row["draws"] += 1
+            for c in pe.CLASSES:
+                for field in (f"{c}_edits", f"{c}_chars"):
+                    row[field] = row.get(field, 0) + int(u.get(field, 0))
+            row["insertions"] = row.get("insertions", 0) + int(
+                u.get("insertions", 0))
+    # An utterance that failed in some draws keeps the draws it has; its
+    # denominator is smaller, which is correct, and the row is not dropped.
+    return [merged[i] for i in order if i in merged]
 
 
 def _select(dirs: list[pathlib.Path], wanted: list[str]) -> list[pathlib.Path]:

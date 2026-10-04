@@ -1853,3 +1853,70 @@ The objective was not changed mid-matrix. Instead `_record` on `AdapterBase`
 keeps the scalar terms of each step's loss dict and the step record carries them
 under `components`, so every run from r09 onward can be read directly instead of
 reconstructed from a filter bank. 10 assertions on it.
+
+## 4 October: the seed floor under the arm gap, on held-out intelligibility
+
+The first result in this project that has a scale under it. 50 test utterances,
+5 synthesis draws each, two CTC recognisers, 17,770 reference characters per
+run (6,835 word-final site, 2,370 medial site, 8,565 no site).
+
+    recogniser        run  arm        CER      draw sd
+    IndicConformer    r02  phoneme   0.1237    0.0081
+                      r22  phoneme   0.1078    0.0072
+                      r23  phoneme   0.1051    0.0077
+                      r05  grapheme  0.1536    0.0088
+    MMS-1B-all        r02  phoneme   0.2111    0.0038
+                      r22  phoneme   0.1880    0.0042
+                      r23  phoneme   0.1854    0.0066
+                      r05  grapheme  0.2443    0.0018
+
+**The three variances order correctly, on both recognisers.** This is the
+structure the claim needs, and it is the first time all three have existed at
+once:
+
+    IndicConformer   draw 0.00795  <  seed 0.01005  <  arm gap 0.02990
+    MMS-1B-all       draw 0.00410  <  seed 0.01415  <  arm gap 0.03320
+
+The arm gap is 2.98 standard deviations of the seed spread on IndicConformer
+and 2.35 on MMS, or 1.61 and 1.29 times the full seed range. **The graphemic
+arm is worse than all three phonemic seeds on both recognisers.** No sign
+change anywhere.
+
+Both arms sit well above the recogniser's own floor, by a factor of 4.06 to
+5.93, so this is measured in a regime where the recogniser has room to
+discriminate rather than near its own error.
+
+**The effect is not localised to rule-predicted deletion sites.** The paired
+bootstrap over utterances, 2,000 resamples, gives:
+
+    IndicConformer  final   +0.0057  [-0.0506, +0.0597]   not clear of zero
+                    medial  -0.0068  [-0.0944, +0.0799]   not clear of zero
+    MMS-1B-all      final   +0.0200  [-0.0553, +0.0951]   not clear of zero
+                    medial  -0.0069  [-0.1027, +0.0859]   not clear of zero
+
+The graphemic arm is worse in every class rather than specifically at sites.
+On IndicConformer: final +0.0515, medial +0.0536, no site +0.0252. The site
+classes degrade about twice as much as the no-site class, which is the shape
+the hypothesis predicts, but the difference of excesses is not separable from
+zero at this sample size.
+
+So the reportable finding is that explicit grapheme-to-phoneme conversion
+improves intelligibility globally, and this project cannot attribute that
+improvement specifically to schwa deletion. [Inference] A broadly distributed
+benefit is consistent with the phonemic representation helping as a
+representation: r05 carries 136 symbols against r02's 78, so the graphemic arm
+fits a larger embedding table from the same nine hours, and that confound is
+intrinsic to the contrast rather than a defect in it.
+
+**The medial-site claim of 3 October is withdrawn in full.** It was one
+unseeded draw; with seeding, five draws, 50 utterances and an interval, its
+point estimate is -0.0068 and -0.0069.
+
+**A defect found while reading this table.** The bootstrap rows and the class
+rates above them were computed from different samples: `record["utterances"]`
+held the first draw alone while the class rates pooled all five, which is why
+the table's final-site excess difference is +0.0263 and the bootstrap's point
+estimate +0.0057 for the same quantity. Draws are now merged per utterance
+before resampling, which keeps the utterance as the sampling unit and gives
+the interval the same characters the rate has. The intervals above are
+therefore the wide version; they are kept as printed and the run is repeated.
