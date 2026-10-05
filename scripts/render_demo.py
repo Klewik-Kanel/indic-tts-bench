@@ -39,7 +39,9 @@ HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
 from src.export import griffinlim                                 # noqa: E402
-from src.export.synthesize import load, write_wav                  # noqa: E402
+from src.export.synthesize import (END_TO_END,                     # noqa: E402
+                                   VOCODER_ARCHITECTURES,
+                                   load, read_manifest, write_wav)
 
 INTERIM = HERE / "data" / "interim"
 TABLES = HERE / "results" / "tables"
@@ -90,19 +92,29 @@ def main(argv: list[str] | None = None) -> int:
     rates_needed: set[int] = set()
 
     for bundle_dir in bundles:
-        # A vocoder is attached only to the bundles that need one, so passing
-        # --vocoder with a VITS bundle in the list is not an error.
-        voc = a.vocoder if a.vocoder else None
-        try:
-            b = load(bundle_dir, device=a.device, vocoder=voc)
-        except SystemExit as exc:
-            if voc is None or "end to end" not in str(exc):
-                raise
-            b = load(bundle_dir, device=a.device)
-        if b.manifest["language"] != a.lang:
-            print(f"  skipping {bundle_dir.name}: trained on "
-                  f"{b.manifest['language']}, not {a.lang}")
+        # exports/ holds the vocoders beside the voices, and the default glob
+        # takes everything in it. A vocoder has no text side, so it is not an
+        # arm of a listening test: it is dropped here, by its manifest, before
+        # any weights are loaded. Reaching synthesis with one aborts the whole
+        # render, which is how a run that had already produced every clip
+        # ended up writing no data.json at all.
+        man = read_manifest(bundle_dir)
+        if man["architecture"] in VOCODER_ARCHITECTURES:
+            print(f"  skipping {bundle_dir.name}: "
+                  f"{man['architecture']} is a vocoder, not a voice")
             continue
+        if man["language"] != a.lang:
+            print(f"  skipping {bundle_dir.name}: trained on "
+                  f"{man['language']}, not {a.lang}")
+            continue
+        # The vocoder goes to the mel-only arms and to no others. Decided from
+        # the manifest rather than by catching attach_vocoder's refusal, so a
+        # real rate or language mismatch stays fatal instead of falling back
+        # to a silent arm that looks like a result.
+        needs = bool(man.get("needs_vocoder",
+                             man["architecture"] not in END_TO_END))
+        voc = a.vocoder if (a.vocoder and needs) else None
+        b = load(bundle_dir, device=a.device, vocoder=voc)
         rid = b.manifest["run_id"]
         rates_needed.add(b.sample_rate)
         runs.append({

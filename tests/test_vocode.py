@@ -184,14 +184,20 @@ def test_render_demo_records_the_vocoder_bundle_in_the_manifest():
 
 
 def test_a_vits_bundle_in_the_list_is_not_an_error_when_vocoder_is_passed():
-    """attach_vocoder refuses an end-to-end model on purpose. Rendering a
-    mixed set of bundles must not die on that refusal."""
+    """attach_vocoder refuses an end-to-end model on purpose, so a mixed set
+    of bundles must not reach that refusal at all.
+
+    It used to be caught and retried without a vocoder, which also swallowed a
+    real rate or language mismatch and turned it into a silent arm. The gate
+    is the manifest's own needs_vocoder now, so the refusal stays fatal.
+    See tests/test_render_demo_bundles.py for the behaviour."""
     import pathlib as _p
     src = _p.Path("scripts/render_demo.py").read_text()
-    i = src.index("voc = a.vocoder if a.vocoder else None")
-    block = src[i:i + 500]
-    assert "end to end" in block
-    assert "raise" in block
+    i = src.index("voc = a.vocoder if (a.vocoder and needs) else None")
+    block = src[max(0, i - 500):i + 200]
+    assert "needs_vocoder" in block
+    assert "END_TO_END" in block
+    assert "except SystemExit" not in src
 
 
 def test_the_harness_only_skips_a_mel_only_run_without_a_vocoder():
