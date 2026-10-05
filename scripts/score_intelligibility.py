@@ -349,8 +349,21 @@ def reference_floor(backend_name: str, lang: str, split: str,
             failures.append({"id": row["id"],
                              "error": f"{type(exc).__name__}: {exc}"})
     out = {"backend": backend_name, "n": len(pairs), "failures": failures}
+    if failures:
+        kinds: dict[str, int] = {}
+        for f in failures:
+            kinds[str(f.get("error"))] = kinds.get(str(f.get("error")), 0) + 1
+        out["failure_kinds"] = kinds
+        print(f"    floor {backend_name}: {len(failures)} failures, "
+              f"{len(kinds)} distinct:", flush=True)
+        for msg, count in sorted(kinds.items(), key=lambda kv: -kv[1])[:5]:
+            print(f"      {count:5d}x {msg[:110]}", flush=True)
     if not pairs:
-        out["error"] = "nothing transcribed from the references"
+        top = sorted((out.get("failure_kinds") or {}).items(),
+                     key=lambda kv: -kv[1])[:2]
+        out["error"] = ("nothing transcribed from the references: "
+                        + "; ".join(f"{c}x {m[:70]}" for m, c in top)
+                        if top else "nothing transcribed from the references")
         return out
     pooled = pe.accumulate(parts)
     out["corpus_cer"] = asr.corpus_cer(pairs)
@@ -428,8 +441,27 @@ def vocoder_ceiling(vocoder_dir: pathlib.Path, backend_name: str, lang: str,
            "vocoder": voc.manifest["run_id"],
            "vocoder_step": voc.manifest.get("step"),
            "failures": failures}
+    # Distinct causes with counts. The same lesson as score_bundle, which was
+    # given it yesterday and this function was not: on 5 October the
+    # IndicConformer ceiling failed on all 50 utterances and the table said
+    # only "nothing transcribed", so the reason sat in a JSON file nobody had
+    # a reason to open while MMS's row beside it looked fine.
+    if failures:
+        kinds: dict[str, int] = {}
+        for f in failures:
+            kinds[str(f.get("error"))] = kinds.get(str(f.get("error")), 0) + 1
+        out["failure_kinds"] = kinds
+        print(f"    ceiling {backend_name}: {len(failures)} failures, "
+              f"{len(kinds)} distinct:", flush=True)
+        for msg, count in sorted(kinds.items(), key=lambda kv: -kv[1])[:5]:
+            print(f"      {count:5d}x {msg[:110]}", flush=True)
     if not pairs:
-        out["error"] = "nothing transcribed from the vocoded ground truth"
+        top = sorted((out.get("failure_kinds") or {}).items(),
+                     key=lambda kv: -kv[1])[:2]
+        out["error"] = ("nothing transcribed from the vocoded ground truth: "
+                        + "; ".join(f"{c}x {m[:70]}" for m, c in top)
+                        if top else
+                        "nothing transcribed from the vocoded ground truth")
         return out
     pooled = pe.accumulate(parts)
     out["corpus_cer"] = asr.corpus_cer(pairs)

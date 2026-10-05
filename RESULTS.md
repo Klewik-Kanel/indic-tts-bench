@@ -1920,3 +1920,43 @@ estimate +0.0057 for the same quantity. Draws are now merged per utterance
 before resampling, which keeps the utterance as the sampling unit and gives
 the interval the same characters the rate has. The intervals above are
 therefore the wide version; they are kept as printed and the run is repeated.
+
+## 5 October: the vocoder is nearly transparent, and FastSpeech 2 is the noise
+
+r01 and r04 came back at a character error rate of 0.9932 and 0.9924 with
+edits equal to reference characters, which is the "transcribed nothing"
+ceiling. Two suspects were stacked behind that: the acoustic model's mels and
+the vocoder. The ceiling measurement separates them, on 50 Hindi test
+utterances under MMS-1B-all:
+
+    recogniser floor, the real recordings          0.0442
+    vocoder ceiling, the real mels through r06     0.0487
+    r02, VITS, phonemic, 5 draws                   0.2111
+    r01, FastSpeech 2, phonemic, through r06       0.9789
+
+**The vocoder costs 0.0045 CER**, which is 10.18% of the recogniser's own
+floor and 0.46% of r01's rate. Of r01's error above the floor, the vocoder
+explains 0.48% and the acoustic model explains 99.52%, a ratio of 206.7 to 1.
+The vocoded ground-truth transcripts are accurate Hindi.
+
+So the FastSpeech 2 arms genuinely produce unintelligible speech, which is
+what the loss decomposition of 3 October predicted: the mel decoder is
+optimised against under one per cent of the gradient while an unnormalised
+pitch head in hertz takes most of the rest. The prediction and the measurement
+agree, by two independent routes.
+
+**Correction, and a lesson about the measure rather than the model.** On
+4 October I wrote that r06 "is not a working vocoder" because its held-out mel
+L1 of 0.2465 loses to a Griffin-Lim round trip at 0.1434, a factor of 1.72.
+That inference was wrong. Mel L1 did not predict intelligibility: the vocoder
+that loses on it by 72% is 0.0045 CER from transparent. A spectral distance
+and an intelligibility proxy are not substitutes, which is the same point
+section 4 of the paper makes about mel-cepstral distortion and makes here
+against my own reasoning. The stopping criterion defects stand as recorded
+(min_delta 125 times smaller than the noise, best weights not kept); they cost
+less than they looked like they would.
+
+**The IndicConformer ceiling failed on all 50 and the table would not say
+why.** score_bundle was given per-cause failure summarising on 4 October and
+neither the floor nor the ceiling was, so MMS's row looked fine beside a row
+whose reason sat unread in a JSON file. All three passes summarise now.

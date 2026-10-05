@@ -538,3 +538,38 @@ def test_ceiling_only_loads_no_acoustic_bundle():
 def test_the_ceiling_is_written_into_the_combined_json():
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
     assert '"vocoder_ceiling": ceilings' in src
+
+
+# --- every pass has to say why it failed ------------------------------------
+
+def test_the_ceiling_summarises_its_failures_by_cause():
+    """On 5 October the IndicConformer ceiling failed on all 50 utterances and
+    the table said only "nothing transcribed", so the reason sat in a JSON
+    file nobody had a reason to open while MMS's row beside it looked fine.
+    score_bundle was given this the day before and this function was not."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    body = src[src.index("def vocoder_ceiling("):src.index("def ceiling_table(")]
+    assert "failure_kinds" in body
+    assert "distinct" in body
+
+
+def test_the_floor_summarises_its_failures_by_cause():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    start = src.index("def reference_floor(")
+    body = src[start:src.index("\ndef ", start + 1)]
+    assert "failure_kinds" in body
+
+
+def test_an_empty_ceiling_names_the_cause_in_its_error_string():
+    """The error string is what the table prints, so the cause has to be in
+    it rather than only in the JSON."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    i = src.index('"nothing transcribed from the vocoded ground truth')
+    assert "failure_kinds" in src[i - 400:i + 300]
+
+
+def test_every_pass_that_can_fail_reports_kinds():
+    """Three passes can fail wholesale: the floor, the ceiling and a run.
+    All three must summarise, or the next silent one costs another round trip."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    assert src.count("failure_kinds") >= 6
