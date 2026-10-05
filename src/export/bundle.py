@@ -68,7 +68,65 @@ AUDIO = {k: v for k, v in project_mel(22_050).items()
 BUNDLE_VERSION = 3
 
 
-def resolve_vocoder(spec: str, sample_rate: int) -> dict:
+def resolve_own_bundle(path: pathlib.Path, sample_rate: int,
+                       language: str) -> dict | None:
+    """One of OUR vocoder bundles, verified from its own manifest.
+
+    This branch did not exist. `resolve_vocoder` was written when the vocoder
+    was going to be a published HiFi-GAN checkpoint, so it hands the path to
+    `read_config`, which looks for config.json, config.yaml or config.yml and
+    raises on a directory holding none of them. An export bundle holds
+    manifest.json and model.pt, so `--vocoder exports/r06_step18000` failed
+    outright: the export path could accept a stranger's vocoder and not ours.
+
+    The manifest's own `audio` block is the authority here, because it was
+    written at export time from `project_mel`, the same function this compares
+    it against. A disagreement therefore means something real diverged, such
+    as a bundle built under different constants or at a different rate, rather
+    than two conventions being compared.
+
+    Returns None when the path is not one of our bundles, so the caller falls
+    through to the external-checkpoint path unchanged.
+    """
+    if not path.is_dir() or not (path / "manifest.json").exists():
+        return None
+    from .synthesize import VOCODER_ARCHITECTURES, read_manifest
+
+    man = read_manifest(path)
+    arch = man.get("architecture")
+    if arch not in VOCODER_ARCHITECTURES:
+        raise SystemExit(
+            f"{path}: this is a bundle for {arch!r}, which is not a vocoder. "
+            f"Expected one of {sorted(VOCODER_ARCHITECTURES)}.")
+    if int(man["sample_rate"]) != int(sample_rate):
+        raise SystemExit(
+            f"{path}: the vocoder is {man['sample_rate']} Hz and this run is "
+            f"{sample_rate} Hz. A mel on the wrong rate sounds like speech "
+            "and is wrong.")
+    if man.get("language") != language:
+        raise SystemExit(
+            f"{path}: the vocoder was trained on {man.get('language')!r} and "
+            f"this run is {language!r}. Each language has its own vocoder so "
+            "a speaker mismatch cannot enter the Marathi control.")
+    want = project_mel(int(sample_rate))
+    got = man.get("audio") or {}
+    bad = {k: (v, got.get(k)) for k, v in want.items()
+           if k not in got or float(got[k]) != float(v)}
+    if bad:
+        raise SystemExit(
+            f"{path}: its mel does not match this project's: "
+            + "; ".join(f"{k} wants {w} and the bundle says {g}"
+                        for k, (w, g) in sorted(bad.items())))
+    return {"name": path.name, "path": str(path),
+            "source": f"{path / 'manifest.json'} (one of our own bundles)",
+            "mel_verified": True,
+            "run_id": man.get("run_id"),
+            "step": man.get("step"),
+            "config_hash": man.get("config_hash"),
+            "mel": dict(want)}
+
+
+def resolve_vocoder(spec: str, sample_rate: int, language: str = "") -> dict:
     """What the bundle records about its vocoder, and whether it was verified.
 
     `--vocoder` takes either a path to a real checkpoint, config, or directory,
@@ -89,6 +147,9 @@ def resolve_vocoder(spec: str, sample_rate: int) -> dict:
         return {"name": spec, "mel_verified": False,
                 "note": ("a name, not a path on this machine, so its mel front "
                          "end was NOT checked against this project's")}
+    own = resolve_own_bundle(p, sample_rate, language)
+    if own is not None:
+        return own
     cfg, source = read_config(p)
     rows = assert_mel_matches(sample_rate, cfg, source)
     return {"name": p.name, "path": str(p), "source": source,
@@ -140,7 +201,7 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
     # front end is read and checked here, so an export with a mismatched
     # vocoder fails instead of producing a bundle that synthesises wrongly.
     audio = project_mel(int(cfg["sample_rate"]))
-    voc = resolve_vocoder(vocoder, int(cfg["sample_rate"]))
+    voc = resolve_vocoder(vocoder, int(cfg["sample_rate"]), cfg["language"])
 
     out = pathlib.Path(out_root) / f"{cfg['run_id']}_step{step}"
     out.mkdir(parents=True, exist_ok=True)
