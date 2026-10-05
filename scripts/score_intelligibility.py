@@ -183,7 +183,10 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
         print(f"    {rid}/{backend_name}: {len(failures)} failures, "
               f"{len(kinds)} distinct:", flush=True)
         for msg, count in sorted(kinds.items(), key=lambda kv: -kv[1])[:5]:
-            print(f"      {count:5d}x {msg[:110]}", flush=True)
+            # 400, not 110: a truncation that cuts a URL invents a shorter one,
+            # and 110 cut the IndicConformer repository to "ai4bh".
+            print(f"      {count:5d}x "
+                  f"{_first_full_message(failures, msg)[:400]}", flush=True)
     if not passes:
         record["n"] = 0
         record["skipped"] = (
@@ -362,10 +365,14 @@ def reference_floor(backend_name: str, lang: str, split: str,
         print(f"    floor {backend_name}: {len(failures)} failures, "
               f"{len(kinds)} distinct:", flush=True)
         for msg, count in sorted(kinds.items(), key=lambda kv: -kv[1])[:5]:
-            print(f"      {count:5d}x {msg[:110]}", flush=True)
+            # 400, not 110: a truncation that cuts a URL invents a shorter one,
+            # and 110 cut the IndicConformer repository to "ai4bh".
+            print(f"      {count:5d}x "
+                  f"{_first_full_message(failures, msg)[:400]}", flush=True)
     if not pairs:
-        top = sorted((out.get("failure_kinds") or {}).items(),
-                     key=lambda kv: -kv[1])[:2]
+        top = [(_first_full_message(failures, m), c) for m, c in
+               sorted((out.get("failure_kinds") or {}).items(),
+                      key=lambda kv: -kv[1])[:2]]
         out["error"] = ("nothing transcribed from the references: "
                         + "; ".join(f"{c}x {m[:70]}" for m, c in top)
                         if top else "nothing transcribed from the references")
@@ -462,10 +469,14 @@ def vocoder_ceiling(vocoder_dir: pathlib.Path, backend_name: str, lang: str,
         print(f"    ceiling {backend_name}: {len(failures)} failures, "
               f"{len(kinds)} distinct:", flush=True)
         for msg, count in sorted(kinds.items(), key=lambda kv: -kv[1])[:5]:
-            print(f"      {count:5d}x {msg[:110]}", flush=True)
+            # 400, not 110: a truncation that cuts a URL invents a shorter one,
+            # and 110 cut the IndicConformer repository to "ai4bh".
+            print(f"      {count:5d}x "
+                  f"{_first_full_message(failures, msg)[:400]}", flush=True)
     if not pairs:
-        top = sorted((out.get("failure_kinds") or {}).items(),
-                     key=lambda kv: -kv[1])[:2]
+        top = [(_first_full_message(failures, m), c) for m, c in
+               sorted((out.get("failure_kinds") or {}).items(),
+                      key=lambda kv: -kv[1])[:2]]
         out["error"] = ("nothing transcribed from the vocoded ground truth: "
                         + "; ".join(f"{c}x {m[:70]}" for m, c in top)
                         if top else
@@ -512,6 +523,24 @@ def _failure_kinds(failures: list[dict]) -> dict[str, int]:
         head = msg.splitlines()[0] if msg else "unknown"
         kinds[head] = kinds.get(head, 0) + 1
     return kinds
+
+
+def _first_full_message(failures: list[dict], head: str) -> str:
+    """The whole message for one cause, newlines flattened.
+
+    The first line is the right dedup KEY and the wrong thing to print on its
+    own. "OSError: You are trying to access a gated repo." does not say which
+    repo; the URL is on the next line. Printing only the key and then cutting
+    at 110 characters turned
+    huggingface.co/ai4bharat/indic-conformer-600m-multilingual into
+    "huggingface.co/ai4bh", which reads like a repository name and was taken
+    for one.
+    """
+    for f in failures:
+        msg = str(f.get("error") or "").strip()
+        if msg and msg.splitlines()[0] == head:
+            return " ".join(msg.split())
+    return head
 
 
 def _warm_or_fail(engine, label: str) -> str | None:
