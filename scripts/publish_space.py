@@ -59,8 +59,17 @@ def audit(root: pathlib.Path) -> tuple[list[str], dict]:
                    "renders an empty listening test without it")
         return bad, {}
 
+    # Python's json reads Infinity, -Infinity and NaN. JSON.parse does not, and
+    # the page is parsed by a browser, so this must be the stricter of the two.
+    # Reading the file with the permissive parser is how an audit passed a
+    # data.json that rendered as "Could not load data.json".
+    def _refuse(token):
+        raise ValueError(
+            f"{token} is not JSON and a browser will refuse the whole file")
+
     try:
-        data = json.loads(data_path.read_text(encoding="utf-8"))
+        data = json.loads(data_path.read_text(encoding="utf-8"),
+                          parse_constant=_refuse)
     except Exception as exc:                                  # noqa: BLE001
         bad.append(f"{data_path} is not readable JSON: {exc}")
         return bad, {}

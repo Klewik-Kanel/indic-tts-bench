@@ -216,7 +216,9 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
     manifest = {
         "bundle_version": BUNDLE_VERSION,
         "run_id": cfg["run_id"],
-        "config_hash": cfg.get("config_hash", ""),
+        # A hash is a string. r08's was written as a float and came out as
+        # Infinity, which is not JSON, so it took a whole page down downstream.
+        "config_hash": hash_text(cfg.get("config_hash", "")),
         "step": step,
         "architecture": cfg["architecture"],
         "language": cfg["language"],
@@ -270,6 +272,21 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
         print(f"  vocoder {voc['name']}: mel front end verified against "
               "this project's")
     return out
+
+
+def hash_text(value) -> str:
+    """A config hash as text, with a non-finite number named rather than kept.
+
+    r08 trained with `cfg["config_hash"] = inf` on 2 October and wrote that
+    into its config and every checkpoint. The real hash cannot be regenerated,
+    so nothing here can recover it; what it can do is stop a float that no
+    JSON parser accepts from travelling any further.
+    """
+    import math
+
+    if isinstance(value, float):
+        return "not-recoverable" if not math.isfinite(value) else repr(value)
+    return str(value or "")
 
 
 def main(argv: list[str] | None = None) -> int:

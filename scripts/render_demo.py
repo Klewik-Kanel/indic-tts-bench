@@ -54,6 +54,37 @@ def reference_column(sample_rate: int) -> str:
     return "wav22" if sample_rate == 22050 else "wav16"
 
 
+# Python's json writes Infinity, -Infinity and NaN, and reads them back, but
+# none of the three is JSON. A browser's JSON.parse refuses the whole file, so
+# one bad field in one run blanks the entire listening test. r08 trained with
+# a non-finite config_hash on 2 October, that value reached its manifest, and
+# the page showed "Could not load data.json" with every arm gone.
+NOT_JSON = {float("inf"): "+Infinity", float("-inf"): "-Infinity"}
+
+
+def json_safe(value, where="", seen=None):
+    """`value` with every non-finite float replaced by a string saying so.
+
+    The replacement is a string and not a null, because the field did hold
+    something: a run whose recorded hash is not a hash. Silently dropping it
+    would hide the defect that RESULTS.md documents, and keeping the float
+    would make the file unreadable.
+    """
+    import math
+
+    if isinstance(value, float) and not math.isfinite(value):
+        name = NOT_JSON.get(value, "NaN")
+        print(f"  {where or 'a field'} is {name}, which is not JSON. Writing "
+              f'"not-recoverable" instead; see RESULTS.md on r08.')
+        return "not-recoverable"
+    if isinstance(value, dict):
+        return {k: json_safe(v, f"{where}.{k}" if where else str(k))
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v, f"{where}[{i}]") for i, v in enumerate(value)]
+    return value
+
+
 def matrix_cell(man: dict) -> dict:
     """Which cell of the matrix a run is: its ladder rung and its seed.
 
@@ -262,8 +293,13 @@ def main(argv: list[str] | None = None) -> int:
         "sentences": sentences,
         "failures": failures,
     }
+    # allow_nan=False is the guard, not the cleanup: json_safe should have
+    # removed every non-finite value already, and if one survives this raises
+    # here rather than publishing a page that cannot load.
     (a.out / "data.json").write_text(
-        json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+        json.dumps(json_safe(data), indent=1, ensure_ascii=False,
+                   allow_nan=False),
+        encoding="utf-8")
 
     total = sum(1 for s in sentences for r in s["runs"].values() if r.get("audio"))
     mb = sum(p.stat().st_size for p in a.out.rglob("*.wav")) / 1e6
