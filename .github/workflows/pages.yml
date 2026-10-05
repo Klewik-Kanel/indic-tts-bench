@@ -1,0 +1,58 @@
+# Publish space_static to GitHub Pages.
+#
+# The demo lives in exactly one place in this repository: space_static/. It is
+# NOT copied into docs/ for Pages, because two copies of 36 wav files is two
+# things to keep in step and the second one drifts. This workflow uploads that
+# directory as the Pages artifact instead, so the served site and the Static
+# Space are byte-identical by construction.
+#
+# Pages and the Hugging Face Space serve the same files on purpose: neither
+# host is then a single point of failure for the one part of this project a
+# reader can listen to rather than read.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "space_static/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A queued run supersedes a waiting one, but never cancels one mid-upload:
+# a half-published site is worse than a stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the page and its data are both present
+        run: |
+          test -f space_static/index.html || {
+            echo "space_static/index.html is missing"; exit 1; }
+          test -f space_static/data.json || {
+            echo "space_static/data.json is missing: the page reads it at load"
+            echo "and renders an empty listening test without it"; exit 1; }
+          clips=$(find space_static/audio -name '*.wav' | wc -l)
+          echo "$clips wav files"
+          test "$clips" -gt 0 || { echo "no audio to serve"; exit 1; }
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: space_static
+      - id: deploy
+        uses: actions/deploy-pages@v4

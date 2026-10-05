@@ -61,8 +61,14 @@ def completed_steps(run: pathlib.Path) -> list[int]:
     return sorted(out)
 
 
-def plan() -> list[tuple[pathlib.Path, str]]:
-    """(local path, path in the repository) for everything worth keeping."""
+def plan(all_checkpoints: bool = False) -> list[tuple[pathlib.Path, str]]:
+    """(local path, path in the repository) for everything worth keeping.
+
+    `all_checkpoints` sends every completed checkpoint rather than the final
+    one per run. The default stays at one because this runs on a timer between
+    pairs and a routine offload should be cheap; the full set is for the one
+    pass that has to make the training box disposable.
+    """
     jobs: list[tuple[pathlib.Path, str]] = []
 
     for name in ("RESULTS.md", "README.md"):
@@ -87,19 +93,41 @@ def plan() -> list[tuple[pathlib.Path, str]]:
         if not steps:
             continue
         # The final checkpoint if the run reached it, otherwise the newest.
-        keep = 100_000 if 100_000 in steps else steps[-1]
-        blob = run / "checkpoints" / f"step_{keep}" / "state.pt"
-        if blob.exists():
-            jobs.append((blob, f"runs/{rid}/checkpoints/step_{keep}/state.pt"))
-        meta = run / "checkpoints" / f"step_{keep}" / "meta.json"
-        if meta.exists():
-            jobs.append((meta, f"runs/{rid}/checkpoints/step_{keep}/meta.json"))
+        wanted = steps if all_checkpoints else [
+            100_000 if 100_000 in steps else steps[-1]]
+        for keep in wanted:
+            blob = run / "checkpoints" / f"step_{keep}" / "state.pt"
+            if blob.exists():
+                jobs.append((blob,
+                             f"runs/{rid}/checkpoints/step_{keep}/state.pt"))
+            meta = run / "checkpoints" / f"step_{keep}" / "meta.json"
+            if meta.exists():
+                jobs.append((meta,
+                             f"runs/{rid}/checkpoints/step_{keep}/meta.json"))
 
     exports = REPO / "exports"
     if exports.is_dir():
         for p in sorted(exports.rglob("*")):
             if p.is_file():
                 jobs.append((p, f"exports/{p.relative_to(exports)}"))
+
+    # The scored tables and their per-utterance JSON. Small, and they are the
+    # numbers the paper quotes: without them a reader has the weights and no
+    # record of what was measured from them.
+    tables = REPO / "results" / "tables"
+    if tables.is_dir():
+        for p in sorted(tables.rglob("*")):
+            if p.is_file() and not p.name.startswith("."):
+                jobs.append((p, f"results/tables/{p.relative_to(tables)}"))
+
+    # The static demo. A Static Space serves files and runs nothing, so these
+    # wavs ARE the deliverable rather than a build artefact, and they are the
+    # one part of this repository a reader can experience rather than read.
+    demo = REPO / "space_static"
+    if demo.is_dir():
+        for p in sorted(demo.rglob("*")):
+            if p.is_file() and not p.name.startswith("."):
+                jobs.append((p, f"space_static/{p.relative_to(demo)}"))
     return jobs
 
 
@@ -113,6 +141,10 @@ def load_state() -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--all-checkpoints", action="store_true",
+                    help="every completed checkpoint, not just the final one "
+                         "per run. For the pass that makes the training box "
+                         "disposable; it is hundreds of gigabytes.")
     # Defaulted so a restarted loop cannot silently back up nothing because
     # somebody forgot an export. HF_REPO still overrides it.
     ap.add_argument("--repo-id",
@@ -120,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--private", action="store_true", default=True)
     a = ap.parse_args(argv)
 
-    jobs = plan()
+    jobs = plan(all_checkpoints=a.all_checkpoints)
     state = load_state()
     todo = []
     for local, remote in jobs:
