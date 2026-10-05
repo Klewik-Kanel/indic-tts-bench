@@ -6,6 +6,7 @@
   :root {
     --bg: #fbfaf8; --panel: #ffffff; --line: #e3ded6; --ink: #1c1a17;
     --muted: #6f685e; --accent: #7b4b2a; --mark: #f2e4d2; --ref: #2f5d50;
+    --warn: #8a3a2a; --warnbg: #fbeee9; --headline: #2f5d50;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --deva: "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", system-ui, sans-serif;
   }
@@ -13,8 +14,13 @@
     :root:not([data-theme="light"]) {
       --bg: #161513; --panel: #1f1d1a; --line: #332f2a;
       --ink: #ece7df; --muted: #9c9386; --accent: #d79a6a; --mark: #3a2e22;
-      --ref: #7fbfa9;
+      --ref: #7fbfa9; --warn: #e5a08c; --warnbg: #2e211c; --headline: #7fbfa9;
     }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161513; --panel: #1f1d1a; --line: #332f2a;
+    --ink: #ece7df; --muted: #9c9386; --accent: #d79a6a; --mark: #3a2e22;
+    --ref: #7fbfa9; --warn: #e5a08c; --warnbg: #2e211c; --headline: #7fbfa9;
   }
   * { box-sizing: border-box; }
   body {
@@ -26,10 +32,17 @@
   h2 { font-size: 1.05rem; margin: 3em 0 1em; text-transform: uppercase;
        letter-spacing: .08em; color: var(--muted); font-weight: 600; }
   p { margin: 0 0 1em; max-width: 64ch; }
-  .lede { font-size: 1.07rem; color: var(--ink); }
+  .lede { font-size: 1.07rem; }
   .deva { font-family: var(--deva); }
   code, .tok { font-family: var(--mono); font-size: .86em; }
   a { color: var(--accent); }
+
+  /* What to do with the page, before any of the apparatus. */
+  .howto { background: var(--panel); border: 1px solid var(--line);
+           border-left: 3px solid var(--headline);
+           border-radius: 8px; padding: 14px 18px; margin: 0 0 22px; }
+  .howto ol { margin: 0; padding-left: 20px; }
+  .howto li { margin: .3em 0; max-width: 62ch; }
 
   .card { background: var(--panel); border: 1px solid var(--line);
           border-radius: 10px; padding: 20px; margin: 0 0 18px; }
@@ -40,24 +53,43 @@
   .meta { color: var(--muted); font-size: .84rem; margin-bottom: 16px; }
   .meta b { color: var(--ink); font-weight: 600; }
 
-  .arm { display: grid; grid-template-columns: 148px 1fr; gap: 14px;
+  /* A heading inside a card, naming what the next few arms have in common. */
+  .grouphead { margin: 18px 0 2px; font-size: .74rem; font-weight: 700;
+               text-transform: uppercase; letter-spacing: .09em;
+               color: var(--muted); }
+  .grouphead:first-child { margin-top: 0; }
+  .grouphead em { font-style: normal; font-weight: 400; text-transform: none;
+                  letter-spacing: 0; }
+  .grouphead.is-headline { color: var(--headline); }
+  .grouphead.is-headline em { color: var(--muted); }
+
+  .arm { display: grid; grid-template-columns: 172px 1fr; gap: 14px;
          align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
-  .arm:first-of-type { border-top: 0; }
+  .grouphead + .arm { border-top: 0; }
   .name { font-size: .88rem; font-weight: 600; }
   .name small { display: block; font-weight: 400; color: var(--muted);
                 font-size: .8rem; }
+  .name .rid { font-family: var(--mono); font-size: .72rem; color: var(--muted);
+               font-weight: 400; }
   .arm.is-ref .name { color: var(--ref); }
   audio { width: 100%; height: 34px; }
   .tok { color: var(--muted); margin-top: 7px; word-break: break-word; }
   .silent { color: var(--muted); font-size: .86rem; font-style: italic; }
   .caveat { font-size: .82rem; color: var(--accent); margin-top: 6px;
             border-left: 2px solid var(--accent); padding-left: 8px; }
-  /* A provenance note, not a warning: the clip is real system output and the
-     line says which vocoder made the waveform. Muted rather than accent so a
-     Griffin-Lim caveat still stands out beside it. */
-  .note { font-size: .82rem; color: var(--muted); margin-top: 6px;
-          border-left: 2px solid var(--line-strong); padding-left: 8px; }
-  .note code { font-family: var(--mono); font-size: .78rem; }
+  /* A provenance line, not a warning: the clip is real system output and this
+     says which vocoder made the waveform. Muted so a Griffin-Lim caveat and
+     the unintelligibility banner still stand out beside it. */
+  .prov { font-size: .82rem; color: var(--muted); margin-top: 6px;
+          border-left: 2px solid var(--line); padding-left: 8px; }
+  .prov code { font-family: var(--mono); font-size: .78rem; }
+
+  .banner { border: 1px solid var(--warn); background: var(--warnbg);
+            color: var(--ink); border-radius: 8px; padding: 13px 16px;
+            margin: 0 0 18px; font-size: .9rem; }
+  .banner b { color: var(--warn); }
+  .banner p { margin: 0 0 .5em; max-width: 62ch; }
+  .banner p:last-child { margin: 0; }
 
   .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
          margin: 0 0 22px; }
@@ -67,8 +99,10 @@
   button[aria-pressed="true"] { background: var(--ink); color: var(--bg);
                                 border-color: var(--ink); }
   .note { color: var(--muted); font-size: .86rem; }
-  dl { margin: 0; } dt { font-weight: 600; margin-top: .8em; }
-  dd { margin: 0; color: var(--muted); }
+  dl { margin: 0; } dt { font-weight: 600; margin-top: .9em; }
+  dd { margin: 0 0 0 0; color: var(--muted); font-size: .9rem; }
+  .gloss dt { font-weight: 600; margin-top: 1em; }
+  .gloss dd { max-width: 64ch; }
   @media (max-width: 560px) {
     .arm { grid-template-columns: 1fr; gap: 6px; }
   }
@@ -76,15 +110,34 @@
 
 <div class="wrap">
   <h1>Phonemic or graphemic input?</h1>
+
   <p class="lede">Devanagari does not write schwa deletion. <span class="deva">नमक</span>
   is spoken <i>namak</i>, not <i>namaka</i>, and nothing in the spelling says so.
   One arm below is handed the deletion by a rule-based front end. The other reads
   the characters and has to work it out. Everything else about the two is the
-  same: architecture, seed, corpus, step budget.</p>
-  <p>Each sentence carries the natural recording as well, so the question can be
-  how far each arm is from the speaker rather than only which arm you prefer.
-  Sentences are from the held-out split, which no model trained on, and the
-  highlighted words are the ones where medial schwa deletion applies.</p>
+  same: architecture, seed, corpus, step budget. The question this page exists to
+  answer is whether that front end still buys anything.</p>
+
+  <div class="howto">
+    <ol>
+      <li>Read the Devanagari sentence. The <mark>highlighted</mark> words are
+      the ones where medial schwa deletion applies, so they are where the two
+      arms can differ.</li>
+      <li>Play <b>Natural speech</b> first. That is the human speaker, and it is
+      the thing both arms are trying to be.</li>
+      <li>Then play the two arms under <b>the comparison</b> and listen to the
+      highlighted words only. Everything else is shared.</li>
+      <li>The groups below that exist to tell you how much of any difference you
+      hear is real: the same arm at other seeds, and the same arm trained on less
+      data.</li>
+    </ol>
+  </div>
+
+  <div id="warnings"></div>
+
+  <p>Sentences are from the held-out split, which no model trained on. Each
+  sentence carries the natural recording, so the question can be how far each arm
+  is from the speaker rather than only which arm you prefer.</p>
 
   <div class="bar" id="bar"></div>
   <div id="list"></div>
@@ -92,7 +145,35 @@
   <h2>How these sentences were chosen</h2>
   <p id="criterion" class="note"></p>
 
+  <h2>Reading this page</h2>
+  <dl class="gloss" id="gloss">
+    <dt>Phonemic front end</dt>
+    <dd>A rule-based grapheme-to-phoneme converter runs first. It deletes the
+    schwa that the spelling writes but nobody says, so the model is handed
+    <code>n ə m ə k</code> as <code>n ə m k</code> and never has to learn the
+    rule.</dd>
+    <dt>Graphemic, raw characters</dt>
+    <dd>No front end. The model reads <span class="deva">न म क</span> and has to
+    infer the deletion from the audio it was trained on. This is the arm that
+    tells you whether the front end is still doing work.</dd>
+    <dt>Rung</dt>
+    <dd>How much speech that run was trained on. The rungs are nested subsets of
+    one speaker, so 1 h is inside 5 h is inside 9 h. The step budget is identical
+    at every rung, which means a smaller rung sees its data more times, not less
+    often.</dd>
+    <dt>Seed</dt>
+    <dd>The random seed of the training run. Two runs that differ only by seed
+    differ only by training noise, so the spread between them is the scale any
+    claimed difference has to beat.</dd>
+    <dt>Vocoder</dt>
+    <dd>FastSpeech 2 emits a mel spectrogram, which is not audio. A vocoder turns
+    it into a waveform. VITS produces a waveform itself, and is marked end to
+    end. Every clip says which it was, because that is the one thing you cannot
+    hear and cannot recover.</dd>
+  </dl>
+
   <h2>What you are hearing</h2>
+  <p class="note" id="provenance"></p>
   <dl id="runs"></dl>
   <p class="note" id="footer"></p>
 </div>
@@ -101,8 +182,21 @@
 const $ = (s, r = document) => r.querySelector(s);
 let DATA = null, filter = "all";
 
-const esc = s => s.replace(/[&<>"]/g, c =>
+const esc = s => String(s).replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const ARCH_NAME = { fastspeech2: "FastSpeech 2", vits: "VITS",
+                    matcha: "Matcha-TTS" };
+// An architecture that emits a mel and no waveform. Named here so the page
+// never calls such an arm silent when it was in fact given a vocoder.
+const MEL_ONLY = new Set(["fastspeech2", "matcha"]);
+
+// Measured character error rate on the held-out set: 50 utterances, 5
+// synthesis draws each, two CTC recognisers, scripts/score_intelligibility.py.
+// Keyed by run because a measurement is: an arm missing from this table was
+// not measured, and the page says so rather than lending it the number from
+// the run beside it.
+const MEASURED_CER = { r01: "0.993", r04: "0.992" };
 
 // Mark the words where medial deletion applies, matching whole whitespace
 // tokens so a substring cannot highlight the wrong word.
@@ -112,49 +206,168 @@ function marked(text, words) {
     want.has(part) ? `<mark>${esc(part)}</mark>` : esc(part)).join("");
 }
 
-function armRow(label, sub, src, tokens, isRef, vocoder) {
+// -- the matrix ------------------------------------------------------------
+// Eight arms in one stack is a list, not an explanation. The arms are sorted
+// and grouped by what they share, and each group gets a heading saying what
+// varies inside it. All of it comes from data.json: no run id is written into
+// this page, so adding a rung or a seed needs no edit here.
+
+function rungHours(data) {
+  if (!data) return -1;
+  const m = String(data).match(/^(\d+(?:\.\d+)?)\s*(h|hr|hours?|min|m)$/i);
+  if (!m) return String(data) === "train" ? 1e6 : -1;
+  const n = parseFloat(m[1]);
+  return /^m/i.test(m[2]) ? n / 60 : n;
+}
+
+function rungLabel(data) {
+  const h = rungHours(data);
+  if (h < 0) return "rung not recorded";
+  if (h >= 1e6) return "the full corpus";
+  const m = String(data).match(/^(\d+(?:\.\d+)?)\s*(h|hr|hours?|min|m)$/i);
+  if (!m) return String(data);
+  const n = m[1];
+  const unit = /^m/i.test(m[2]) ? "minute" : "hour";
+  return `${n} ${unit}${Number(n) === 1 ? "" : "s"}`;
+}
+
+function inputLabel(repr) {
+  if (repr === "phoneme") return "Phonemic front end";
+  if (repr === "grapheme") return "Graphemic, raw characters";
+  return repr || "unknown input";
+}
+
+// Runs sharing an architecture, a rung and a seed belong together.
+const groupKey = r => `${r.architecture}\u0000${r.data || ""}\u0000${r.seed}`;
+
+function groupsOf(runs) {
+  const by = new Map();
+  for (const r of runs) {
+    const k = groupKey(r);
+    if (!by.has(k)) by.set(k, { architecture: r.architecture, data: r.data,
+                                seed: r.seed, runs: [] });
+    by.get(k).runs.push(r);
+  }
+  const out = [...by.values()];
+  for (const g of out)
+    g.runs.sort((a, b) => (a.input_repr === "phoneme" ? 0 : 1)
+                        - (b.input_repr === "phoneme" ? 0 : 1));
+  // The headline group holds both arms of the contrast. Among those, prefer an
+  // end-to-end architecture over a mel-only one: an end-to-end arm has no
+  // vocoder between the model and what you hear, so it is the comparison with
+  // the fewest things in it that are not the ablation. Then prefer the most
+  // data. Chosen, not assumed: if no group holds both arms, none is marked and
+  // the page does not claim a comparison it is not showing.
+  const rank = g => [MEL_ONLY.has(g.architecture) ? 1 : 0, -rungHours(g.data)];
+  let best = null;
+  for (const g of out) {
+    const reprs = new Set(g.runs.map(r => r.input_repr));
+    if (!(reprs.has("phoneme") && reprs.has("grapheme"))) continue;
+    if (!best) { best = g; continue; }
+    const [a, b] = [rank(g), rank(best)];
+    if (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])) best = g;
+  }
+  if (best) best.headline = true;
+  // Headline first; then biggest rung, seed 0 before its replicas, VITS before
+  // the mel-only architectures, so the arms that can be judged come first.
+  out.sort((a, b) =>
+    (b.headline ? 1 : 0) - (a.headline ? 1 : 0) ||
+    (MEL_ONLY.has(a.architecture) ? 1 : 0) - (MEL_ONLY.has(b.architecture) ? 1 : 0) ||
+    rungHours(b.data) - rungHours(a.data) ||
+    (a.seed ?? 0) - (b.seed ?? 0) ||
+    String(a.architecture).localeCompare(String(b.architecture)));
+  return out;
+}
+
+function groupHeading(g, head) {
+  const arch = ARCH_NAME[g.architecture] || g.architecture;
+  const rung = rungLabel(g.data);
+  if (g.headline)
+    return [`The comparison`,
+            `${arch}${rungHours(g.data) < 0 ? "" : `, ${rung}`}, one seed. These
+             two differ only in how the text reached them.`, true];
+  // A seed replica: same architecture, same rung, different seed. All three
+  // conditions, because a different architecture at a different rung that
+  // happens to carry another seed is not a measure of training noise.
+  const sameSeedFamily = head && g.architecture === head.architecture
+                         && String(g.data) === String(head.data)
+                         && g.seed !== head.seed;
+  if (sameSeedFamily)
+    return [`The same arm, seed ${g.seed}`,
+            `Identical to the phonemic arm above except for the random seed. The
+             gap between these is training noise, and a real effect has to be
+             larger than it.`, false];
+  const reprs = new Set(g.runs.map(r => r.input_repr));
+  const both = reprs.has("phoneme") && reprs.has("grapheme");
+  if (both)
+    return [`${arch}, ${rung}`,
+            `The same contrast in a second architecture.`, false];
+  // Only a group genuinely below the headline's rung is "less data". Without a
+  // headline to compare against, or at the same rung, say what is there and
+  // claim nothing about why.
+  const lower = head && rungHours(g.data) >= 0
+                && rungHours(g.data) < rungHours(head.data);
+  return [`${arch}, ${rung}`,
+          lower ? `Less data, same step budget, same seed. What the front end is
+                   worth when there is less speech to learn from.`
+                : `${g.runs.length === 1 ? "One arm" : `${g.runs.length} arms`},
+                   ${inputLabel(g.runs[0].input_repr).toLowerCase()}. No second
+                   arm at this setting, so there is no contrast to read here.`,
+          false];
+}
+
+function armRow(label, sub, rid, src, tokens, isRef, vocoder) {
   const body = src
     ? `<audio controls preload="none" src="${esc(src)}"></audio>`
     : `<div class="silent">Silent: this architecture produces a mel
        spectrogram and no vocoder was attached when these clips were
        rendered.</div>`;
-  // Every clip says how its waveform was made, because that is the one thing
-  // a listener cannot hear and cannot recover.
-  //
   // A Griffin-Lim clip must say so: it recovers phase by iteration from
   // magnitudes alone and has its own metallic signature, so a listener told
   // "this is the model" would be judging the algorithm. A HiFi-GAN clip must
-  // also say so, and must NOT be labelled end to end, because the mel came
-  // from one model and the waveform from another.
+  // also say so, and must NOT be called end to end, because the mel came from
+  // one model and the waveform from another.
   let caveat = "";
   if (vocoder === "griffin-lim") {
     caveat = `<div class="caveat">Griffin-Lim placeholder, not a trained
       vocoder. Judge the words, not the tone.</div>`;
   } else if (typeof vocoder === "string" && vocoder.startsWith("hifigan:")) {
     const who = vocoder.slice("hifigan:".length);
-    caveat = `<div class="note">Mel from this model, waveform from HiFi-GAN
-      <code>${esc(who)}</code>, fine-tuned on this speaker's own mels. On the
+    caveat = `<div class="prov">Mel from this model, waveform from HiFi-GAN
+      <code>${esc(who)}</code>, trained on this speaker's own mels. On the
       held-out set that vocoder costs 0.0005 and 0.0045 character error rate
-      against two independent recognisers reading the real recordings, so what
-      you hear is the acoustic model rather than the vocoder.</div>`;
+      against two recognisers reading the real recordings, so what you hear is
+      the acoustic model and not the vocoder.</div>`;
   }
   const toks = tokens && tokens.length
     ? `<div class="tok">${tokens.length} tokens · ${esc(tokens.join(" "))}</div>` : "";
+  const tag = rid ? `<span class="rid">${esc(rid)}</span>` : "";
   return `<div class="arm${isRef ? " is-ref" : ""}">
-    <div class="name">${esc(label)}<small>${esc(sub)}</small></div>
+    <div class="name">${esc(label)}<small>${esc(sub)}</small>${tag}</div>
     <div>${body}${caveat}${toks}</div></div>`;
 }
 
-function card(s) {
+function card(s, groups, head) {
   const rates = Object.keys(s.reference || {});
-  let rows = rates.map(r => armRow("Natural speech",
-    `the speaker, ${r} Hz`, s.reference[r], null, true, "reference")).join("");
+  let rows = rates.length
+    ? `<div class="grouphead">The speaker <em>— what both arms are trying to
+         be</em></div>`
+      + rates.map(r => armRow("Natural speech", `recording, ${r} Hz`, "",
+                              s.reference[r], null, true, "reference")).join("")
+    : "";
 
-  for (const run of DATA.runs) {
-    const got = (s.runs || {})[run.run_id];
-    rows += armRow(run.run_id,
-      `${run.architecture}, ${run.input_repr}`,
-      got && got.audio, got && got.tokens, false, got && got.vocoder);
+  for (const g of groups) {
+    const [title, why, isHead] = groupHeading(g, head);
+    rows += `<div class="grouphead${isHead ? " is-headline" : ""}">${title}
+      <em>— ${why}</em></div>`;
+    for (const run of g.runs) {
+      const got = (s.runs || {})[run.run_id];
+      rows += armRow(inputLabel(run.input_repr),
+        `${ARCH_NAME[run.architecture] || run.architecture} · ${rungLabel(run.data)}`
+          + (run.seed === null || run.seed === undefined ? "" : ` · seed ${run.seed}`),
+        run.run_id, got && got.audio, got && got.tokens, false,
+        got && got.vocoder);
+    }
   }
 
   const bits = [`<b>${s.medial}</b> medial`, `<b>${s.final}</b> word-final`,
@@ -172,18 +385,133 @@ const BANDS = [
   ["none", "No medial deletion", s => s.medial === 0],
 ];
 
+let GROUPS = [], HEADLINE = null;
+
 function render() {
   const keep = BANDS.find(b => b[0] === filter)[2];
   const shown = DATA.sentences.filter(keep);
   $("#list").innerHTML = shown.length
-    ? shown.map(card).join("")
+    ? shown.map(s => card(s, GROUPS, HEADLINE)).join("")
     : `<p class="note">No sentences in this band.</p>`;
   for (const btn of document.querySelectorAll("#bar button"))
     btn.setAttribute("aria-pressed", String(btn.dataset.band === filter));
 }
 
+// -- what the page must say out loud ---------------------------------------
+
+function warnings(data) {
+  const out = [];
+  const vocs = new Set();
+  for (const x of data.sentences)
+    for (const r of Object.values(x.runs || {}))
+      if (r && r.vocoder) vocs.add(r.vocoder);
+
+  const melArms = data.runs.filter(r => MEL_ONLY.has(r.architecture));
+  if (melArms.length) {
+    const names = [...new Set(melArms.map(
+      r => ARCH_NAME[r.architecture] || r.architecture))].join(" and ");
+    // Does any of those arms actually have a clip? The page must not tell a
+    // listener that an arm plays when it is silent, or that it is silent when
+    // the render gave it a vocoder.
+    const audible = new Set();
+    for (const x of data.sentences)
+      for (const [rid, r] of Object.entries(x.runs || {}))
+        if (r && r.audio) audible.add(rid);
+    const plays = melArms.some(r => audible.has(r.run_id));
+
+    const measured = melArms.filter(r => MEASURED_CER[r.run_id]);
+    const unmeasured = melArms.filter(r => !MEASURED_CER[r.run_id]);
+    const shown = measured.map(r =>
+      `<code>${esc(r.run_id)}</code> at ${esc(MEASURED_CER[r.run_id])}`)
+      .join(" and ");
+
+    let first = `<p><b>${names} is not intelligible in this build.</b> `;
+    first += plays
+      ? `Those arms play, and what you hear is close to noise. `
+      : `Those arms are listed but have no audio here. `;
+    first += measured.length
+      ? `Two independent recognisers put the character error rate of ${shown},
+         with the number of edits equal to the number of characters in the
+         reference.</p>`
+      : `No intelligibility measurement has been run on these arms.</p>`;
+    if (unmeasured.length)
+      first += `<p>${unmeasured.map(r => `<code>${esc(r.run_id)}</code>`)
+        .join(", ")} ${unmeasured.length === 1 ? "was" : "were"} not measured.
+        ${unmeasured.length === 1 ? "It shares" : "They share"} the objective
+        described below, so the same cause applies, but no error rate has been
+        computed for ${unmeasured.length === 1 ? "it" : "them"} and none is
+        implied here.</p>`;
+    out.push(first +
+      `<p>The cause is measured and is in the objective, not the ablation and
+      not the vocoder. The training loss sums a mel term against pitch and
+      energy terms left in physical units, hertz and spectrogram norm, so the
+      mel decoder was optimised against roughly 0.6 per cent of the gradient.
+      Fixing it means retraining. Until then, read the ${names} rows as a
+      record of what was run, not as a result, and draw nothing from them about
+      phonemic against graphemic input.</p>`);
+  }
+
+  if (vocs.has("griffin-lim"))
+    out.push(`<p>Some arms are played through a <b>Griffin-Lim placeholder</b>
+      rather than a trained vocoder, marked where they appear. Those clips show
+      whether the words are there. They say nothing about how the system
+      sounds.</p>`);
+
+  const silent = [];
+  for (const x of data.sentences)
+    for (const [rid, r] of Object.entries(x.runs || {})) {
+      const arch = (data.runs.find(q => q.run_id === rid) || {}).architecture;
+      if (r && !r.audio && MEL_ONLY.has(arch)) silent.push(rid);
+    }
+  if (silent.length)
+    out.push(`<p><b>${new Set(silent).size} arm(s) have no audio on this page.</b>
+      They emit a mel spectrogram and were rendered without a vocoder. That is a
+      rendering gap, not a result.</p>`);
+
+  if (!data.runs.some(r => r.data))
+    out.push(`<p>No ladder rung is recorded for these bundles, so the arms below
+      are not grouped by how much speech they were trained on.</p>`);
+
+  $("#warnings").innerHTML = out.length
+    ? `<div class="banner">${out.join("")}</div>` : "";
+}
+
+// Which vocoders produced the waveforms, named from the data. This project
+// trains one vocoder per language, so a Marathi page must name its own rather
+// than inherit the Hindi one from a string written into this file.
+function provenance(data) {
+  const vocs = new Set();
+  for (const x of data.sentences)
+    for (const r of Object.values(x.runs || {}))
+      if (r && r.vocoder) vocs.add(r.vocoder);
+
+  const hifi = [...vocs].filter(v => v.startsWith("hifigan:"))
+                        .map(v => v.slice("hifigan:".length)).sort();
+  const parts = [];
+  if (hifi.length)
+    parts.push(`Mel-only arms were vocoded by HiFi-GAN ` +
+      hifi.map(v => `<code>${esc(v)}</code>`).join(" and ") +
+      `, trained on this speaker's own mels.`);
+  if (vocs.has("end-to-end"))
+    parts.push(`End-to-end arms produced their own waveform, with no vocoder
+      in the path.`);
+  if (vocs.has("griffin-lim"))
+    parts.push(`Some arms were inverted by Griffin-Lim, which is a placeholder
+      and not a trained vocoder.`);
+  if (vocs.has("reference") || Object.keys(
+        (data.sentences[0] || {}).reference || {}).length)
+    parts.push(`The natural recording is the speaker, unprocessed.`);
+  $("#provenance").innerHTML = parts.join(" ") ||
+    "No vocoder is recorded for the clips on this page.";
+}
+
 function boot(data) {
   DATA = data;
+  GROUPS = groupsOf(data.runs);
+  HEADLINE = GROUPS.find(g => g.headline) || null;
+
+  warnings(data);
+
   $("#bar").innerHTML = BANDS.map(([k, label, fn]) => {
     const n = data.sentences.filter(fn).length;
     return `<button data-band="${k}">${label} (${n})</button>`;
@@ -197,47 +525,22 @@ function boot(data) {
   });
 
   $("#criterion").textContent = data.criterion || "";
+  provenance(data);
   $("#runs").innerHTML = data.runs.map(r => `
     <dt>${esc(r.run_id)} — ${esc(r.describes || "")}</dt>
-    <dd>step ${esc(String(r.step))} · config <code>${esc(r.config_hash || "?")}</code>
+    <dd>${esc(rungLabel(r.data))}${r.seed === null || r.seed === undefined
+          ? "" : ` · seed ${esc(r.seed)}`}
+        · step ${esc(String(r.step))}
+        · config <code>${esc(r.config_hash || "?")}</code>
         · commit <code>${esc((r.git_commit || "?").slice(0, 10))}</code>
         · ${esc(String(r.sample_rate))} Hz</dd>`).join("");
-  const vocs = new Set();
-  for (const x of data.sentences)
-    for (const r of Object.values(x.runs || {}))
-      if (r && r.vocoder) vocs.add(r.vocoder);
-
-  if (vocs.has("griffin-lim")) {
-    const note = document.createElement("p");
-    note.className = "caveat";
-    note.style.marginTop = "18px";
-    note.innerHTML = `Some arms below are played through a <b>Griffin-Lim
-      placeholder</b> rather than a trained vocoder, marked where they appear.
-      Those clips show whether the words are there. They say nothing about how
-      the system sounds.`;
-    $("#bar").after(note);
-  }
-  const hifi = [...vocs].filter(v => v.startsWith("hifigan:"));
-  if (hifi.length) {
-    const note = document.createElement("p");
-    note.className = "note";
-    note.style.marginTop = "18px";
-    note.innerHTML = `FastSpeech 2 emits a mel spectrogram and is silent on
-      its own. Its clips here are played through
-      ${hifi.map(v => `<code>${esc(v.slice("hifigan:".length))}</code>`)
-            .join(" and ")}, HiFi-GAN fine-tuned on this speaker's own mels,
-      one vocoder per language. Measured on the held-out set, that vocoder
-      accounts for 0.05% and 0.48% of FastSpeech 2's character error above the
-      recogniser's own floor, against two independent recognisers. So if those
-      clips sound poor, the acoustic model is why.`;
-    $("#bar").after(note);
-  }
 
   $("#footer").textContent =
     `${data.sentences.length} sentences from the ${data.split} split, ` +
     `${data.language}. Rendered ${data.generated_utc}. ` +
-    `Nine hours of single-speaker speech per arm at 100,000 steps: ` +
-    `neither arm is a product, and the difference between them is the point.`;
+    `Nine hours of single-speaker speech per arm at the top rung and 100,000 ` +
+    `steps: no arm here is a product, and the difference between them is the ` +
+    `point.`;
   render();
 }
 

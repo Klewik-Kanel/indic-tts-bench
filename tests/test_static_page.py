@@ -42,15 +42,19 @@ def test_the_griffin_lim_caveat_survives():
     assert "Griffin-Lim placeholder" in s
 
 
-def test_the_two_notes_are_visually_distinct():
-    """A provenance note must not read as the same kind of thing as a
-    placeholder warning, or the warning stops carrying weight."""
+def test_the_three_notes_are_visually_distinct():
+    """A provenance line must not read as the same kind of thing as a
+    placeholder warning, or the warning stops carrying weight. The
+    unintelligibility banner must outrank both."""
     import pathlib
     s = pathlib.Path("space_static/index.html").read_text()
-    assert ".note {" in s and ".caveat {" in s
-    note = s[s.index(".note {"):s.index(".note code {")]
-    caveat = s[s.index(".caveat {"):s.index(".note {")]
-    assert "--muted" in note and "--accent" in caveat
+    assert ".prov {" in s and ".caveat {" in s and ".banner {" in s
+    prov = s[s.index(".prov {"):s.index(".prov code {")]
+    caveat = s[s.index(".caveat {"):s.index("  /* A provenance line")]
+    banner = s[s.index(".banner {"):s.index(".banner b {")]
+    assert "--muted" in prov, prov
+    assert "--accent" in caveat, caveat
+    assert "--warn" in banner, banner
 
 
 def test_the_vocoder_note_quotes_the_measured_cost():
@@ -63,16 +67,17 @@ def test_the_vocoder_note_quotes_the_measured_cost():
 
 def test_the_summary_note_names_every_vocoder_actually_used():
     """One vocoder per language, so a Hindi and a Marathi page must each name
-    their own rather than a hardcoded r06."""
+    their own rather than a hardcoded r06. Asserted on the rendered output in
+    tests/test_static_page_grouping.py; this only holds the mechanism."""
     import pathlib
     s = pathlib.Path("space_static/index.html").read_text()
     assert "const vocs = new Set()" in s
     assert "one vocoder per language" in s
-    assert 'hifi.map(' in s
+    assert "hifi.map(" in s
 
 
 def test_the_vocoder_name_is_escaped_before_it_reaches_the_page():
     import pathlib
     s = pathlib.Path("space_static/index.html").read_text()
     assert "esc(who)" in s
-    assert "esc(v.slice" in s
+    assert "esc(v)" in s

@@ -42,14 +42,53 @@ from src.export import griffinlim                                 # noqa: E402
 from src.export.synthesize import (END_TO_END,                     # noqa: E402
                                    VOCODER_ARCHITECTURES,
                                    load, read_manifest, write_wav)
+from src.train.runner import load_config                           # noqa: E402
 
 INTERIM = HERE / "data" / "interim"
 TABLES = HERE / "results" / "tables"
+CONFIGS = HERE / "configs"
 DEFAULT_OUT = HERE / "space_static"
 
 
 def reference_column(sample_rate: int) -> str:
     return "wav22" if sample_rate == 22050 else "wav16"
+
+
+def matrix_cell(man: dict) -> dict:
+    """Which cell of the matrix a run is: its ladder rung and its seed.
+
+    A page listing eight arms cannot group them without these two. Bundles
+    exported before the fields entered the manifest do not carry them, and the
+    config file does, but reading a config file is only safe against the hash:
+    a config edited since the run was trained no longer hashes to the value
+    recorded in the bundle. On a mismatch this reports nothing rather than
+    something plausible and wrong, and says so, because a page that groups an
+    arm under the wrong rung is worse than one that leaves it ungrouped.
+    """
+    cell = {"data": man.get("data") or "", "seed": man.get("seed")}
+    if cell["data"] and cell["seed"] is not None:
+        return cell
+
+    rid = man["run_id"]
+    cfg_path = CONFIGS / f"{rid}.yaml"
+    if not cfg_path.exists():
+        print(f"  {rid}: no configs/{rid}.yaml, so its rung and seed are "
+              "unknown to the page")
+        return cell
+
+    recorded = str(man.get("config_hash") or "")
+    cfg = load_config(cfg_path)
+    on_disk = str(cfg.get("config_hash") or "")
+    if not recorded or on_disk != recorded:
+        print(f"  {rid}: bundle config_hash {recorded or '(none)'} but "
+              f"configs/{rid}.yaml is {on_disk or '(none)'}, so the rung and "
+              "seed are NOT read from it. Re-export the bundle.")
+        return cell
+
+    cell["data"] = cell["data"] or (cfg.get("data") or "")
+    if cell["seed"] is None:
+        cell["seed"] = cfg.get("seed")
+    return cell
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,11 +156,14 @@ def main(argv: list[str] | None = None) -> int:
         b = load(bundle_dir, device=a.device, vocoder=voc)
         rid = b.manifest["run_id"]
         rates_needed.add(b.sample_rate)
+        cell = matrix_cell(b.manifest)
         runs.append({
             "run_id": rid,
             "bundle": bundle_dir.name,
             "architecture": b.manifest["architecture"],
             "input_repr": b.manifest["input_repr"],
+            "data": cell["data"],
+            "seed": cell["seed"],
             "describes": b.describes,
             "step": b.manifest.get("step"),
             "config_hash": b.manifest.get("config_hash", ""),

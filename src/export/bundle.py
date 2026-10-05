@@ -221,6 +221,12 @@ def export(run_dir: pathlib.Path, out_root: pathlib.Path,
         "architecture": cfg["architecture"],
         "language": cfg["language"],
         "input_repr": cfg["input_repr"],
+        # The two fields that say which cell of the matrix this is. A page
+        # listing eight arms cannot group them without the rung and the seed,
+        # and recovering either from configs/ later needs the config file to
+        # still match the hash. Carried here so the bundle answers it alone.
+        "data": cfg.get("data", ""),
+        "seed": cfg.get("seed"),
         "merge_nukta": bool(cfg.get("merge_nukta", False)),
         # The one line a demo audience actually needs, in words.
         "describes": (
