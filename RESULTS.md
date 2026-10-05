@@ -1960,3 +1960,30 @@ less than they looked like they would.
 why.** score_bundle was given per-cause failure summarising on 4 October and
 neither the floor nor the ceiling was, so MMS's row looked fine beside a row
 whose reason sat unread in a JSON file. All three passes summarise now.
+
+### Both recognisers agree the vocoder is transparent
+
+The IndicConformer ceiling, measured after the gate was opened:
+
+    recogniser        floor    ceiling   vocoder cost   r01
+    IndicConformer    0.0259   0.0264    +0.0005        0.9932
+    MMS-1B-all        0.0442   0.0487    +0.0045        0.9789
+
+The vocoder accounts for 0.05% of r01's character error above the floor on
+IndicConformer and 0.48% on MMS. The acoustic model accounts for the other
+99.95% and 99.52%. Two recognisers of different architecture, trained on
+different data, agree that r06 is very nearly invisible to a listener who is
+reading words.
+
+By class on IndicConformer, ceiling minus floor: final +0.0037, medial
+-0.0042, no site +0.0012. The vocoder does not favour or penalise deletion
+sites, so it cannot be producing the site-partitioned numbers.
+
+This closes the question the ceiling was built for, and it closes it against
+my own earlier reasoning. r06's held-out mel L1 of 0.2465 loses to a
+Griffin-Lim round trip at 0.1434 by a factor of 1.72, and from that I inferred
+the vocoder was broken. It costs 0.0005 CER. A spectral distance and an
+intelligibility proxy rank these two systems in opposite orders, which is the
+same lesson as the mel-cepstral distortion result in the other direction: a
+measure that cannot resolve a contrast is not evidence about the contrast, and
+a measure that ranks confidently is not thereby measuring what you want.
