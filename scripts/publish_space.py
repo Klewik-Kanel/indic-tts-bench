@@ -43,6 +43,10 @@ DEFAULT_REPO = "Klewik/Indic-tts-demo"
 # one of these with no vocoder recorded is a rendering fault, not a finding.
 MEL_ONLY = frozenset({"fastspeech2", "matcha"})
 
+# A finished render writes every wav, then data.json. The gap between the two
+# is seconds; this allows for a slow filesystem without allowing a day.
+STALE_SLACK_S = 120.0
+
 
 def audit(root: pathlib.Path) -> tuple[list[str], dict]:
     """(problems, summary). An empty problems list means it is safe to publish."""
@@ -102,6 +106,24 @@ def audit(root: pathlib.Path) -> tuple[list[str], dict]:
                        "be end to end, so the label is wrong")
     if not clips:
         bad.append("no audio at all")
+
+    # render_demo writes data.json last, after every clip. So a data.json
+    # older than the newest wav means that render did not finish, and what is
+    # about to be published is a mixture: the listing from one run and the
+    # audio from another. The failure that produced this check wrote fresh
+    # VITS clips, died on a vocoder bundle before writing the listing, and
+    # left a page still labelling its FastSpeech 2 arms griffin-lim from the
+    # day before. Every other check passed.
+    wavs = sorted(root.rglob("*.wav"), key=lambda q: q.stat().st_mtime)
+    if wavs:
+        newest = wavs[-1]
+        if newest.stat().st_mtime > data_path.stat().st_mtime + STALE_SLACK_S:
+            lag = (newest.stat().st_mtime - data_path.stat().st_mtime) / 60.0
+            bad.append(
+                f"{data_path.name} is {lag:.0f} min older than "
+                f"{newest.relative_to(root)}, so the last render did not "
+                "finish writing it. The listing and the audio come from "
+                "different runs. Re-render.")
 
     summary = {
         "language": data.get("language"),

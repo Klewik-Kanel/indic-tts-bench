@@ -191,3 +191,69 @@ def test_nothing_uploads_while_a_check_fails():
     src = pathlib.Path("scripts/publish_space.py").read_text()
     body = src[src.index("def main("):]
     assert body.index("NOT PUBLISHING") < body.index("upload_folder")
+
+
+# -- a listing from one render and audio from another ------------------------
+
+def _aged(root, data_offset, wav_offset):
+    """A site whose data.json and newest wav have a known age difference."""
+    import os
+    import time
+    now = time.time()
+    os.utime(root / "data.json", (now + data_offset, now + data_offset))
+    for w in root.rglob("*.wav"):
+        os.utime(w, (now + wav_offset, now + wav_offset))
+
+
+def test_a_data_json_older_than_the_newest_clip_is_refused():
+    """The real failure: the render wrote fresh VITS clips, died on a vocoder
+    bundle before writing data.json, and left the page labelling its
+    FastSpeech 2 arms griffin-lim from the day before. Every other check
+    passed, so this is the only one that would have caught it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write(tmp, _ok_data(),
+                      clips=("audio/r02/s1.wav", "audio/r01/s1.wav"))
+        _aged(root, data_offset=-86400, wav_offset=0)
+        bad, _ = audit(root)
+        assert any("did not finish" in b for b in bad), bad
+        assert any("different runs" in b for b in bad)
+
+
+def test_a_finished_render_passes_the_staleness_check():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write(tmp, _ok_data(),
+                      clips=("audio/r02/s1.wav", "audio/r01/s1.wav"))
+        _aged(root, data_offset=0, wav_offset=-5)
+        assert audit(root)[0] == []
+
+
+def test_a_few_seconds_of_filesystem_lag_is_not_a_stale_render():
+    """data.json is written last, but not atomically with the wavs. A slow
+    filesystem must not read as a dead render."""
+    from scripts.publish_space import STALE_SLACK_S
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write(tmp, _ok_data(),
+                      clips=("audio/r02/s1.wav", "audio/r01/s1.wav"))
+        _aged(root, data_offset=0, wav_offset=+30)
+        assert STALE_SLACK_S >= 60
+        assert audit(root)[0] == []
+
+
+def test_a_stale_listing_is_reported_in_minutes():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write(tmp, _ok_data(),
+                      clips=("audio/r02/s1.wav", "audio/r01/s1.wav"))
+        _aged(root, data_offset=-3600, wav_offset=0)
+        bad, _ = audit(root)
+        assert any("60 min older" in b for b in bad), bad
+
+
+def test_no_wavs_is_the_audio_check_not_the_staleness_check():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write(tmp, _ok_data(),
+                      clips=("audio/r02/s1.wav", "audio/r01/s1.wav"))
+        for w in root.rglob("*.wav"):
+            w.unlink()
+        bad, _ = audit(root)
+        assert any("no file" in b for b in bad)
+        assert not any("did not finish" in b for b in bad)
