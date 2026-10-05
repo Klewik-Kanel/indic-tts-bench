@@ -49,7 +49,25 @@ Hindi and both arms learn it. Medial deletion is the conditioned case where
 they should come apart. Sentences with no medial deletion are kept as a
 control.
 
+## What is on the page, and what is not
+
+The arms are grouped by what they share: the comparison itself, the same arm at
+other seeds, and the same arm trained on less data. The seed groups are there
+because training noise is the scale any claimed difference has to beat.
+
+The FastSpeech 2 arms are not intelligible in this build, and the page says so
+where they appear. The cause is measured and is in the training objective, not
+in the ablation and not in the vocoder: the loss sums a mel term against pitch
+and energy terms left in physical units, so the mel decoder was optimised
+against well under one per cent of the gradient. Those rows are a record of
+what was run. They are not a result about phonemic against graphemic input.
+
 ## Regenerating
 
     python scripts/build_demo_set.py --lang hindi --count 12
-    python scripts/render_demo.py   --lang hindi
+    python scripts/render_demo.py   --lang hindi \
+        --vocoder exports/r06_step18000
+
+Without `--vocoder` the mel-only arms write no audio and publish as silent.
+Each language has its own vocoder, so a Marathi render passes the Marathi
+bundle instead; the rate and the language are checked before anything renders.
