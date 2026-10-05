@@ -120,6 +120,23 @@ def plan(all_checkpoints: bool = False) -> list[tuple[pathlib.Path, str]]:
             if p.is_file() and not p.name.startswith("."):
                 jobs.append((p, f"results/tables/{p.relative_to(tables)}"))
 
+    # The frozen split definitions. Weights trained on an unrecorded split are
+    # not reproducible by anyone, including us: the audio comes from a public
+    # corpus, but which utterance landed in train, dev or test does not, and
+    # SPLITS.lock is what says so. Small, text, and the one thing here that
+    # cannot be regenerated once the machine goes.
+    for pattern, where in ((("data/processed", "*.tsv"), "data/processed"),
+                           (("data/processed", "SPLITS.lock"), "data/processed"),
+                           (("data/interim", "manifest.tsv"), "data/interim")):
+        root = REPO / pattern[0]
+        if root.is_dir():
+            for q in sorted(root.rglob(pattern[1])):
+                if q.is_file():
+                    jobs.append((q, f"{where}/{q.relative_to(root)}"))
+    profile = REPO / "data" / "raw" / "dataset_profile.json"
+    if profile.exists():
+        jobs.append((profile, "data/raw/dataset_profile.json"))
+
     # The static demo. A Static Space serves files and runs nothing, so these
     # wavs ARE the deliverable rather than a build artefact, and they are the
     # one part of this repository a reader can experience rather than read.
@@ -128,7 +145,15 @@ def plan(all_checkpoints: bool = False) -> list[tuple[pathlib.Path, str]]:
         for p in sorted(demo.rglob("*")):
             if p.is_file() and not p.name.startswith("."):
                 jobs.append((p, f"space_static/{p.relative_to(demo)}"))
-    return jobs
+
+    # Two patterns can name the same file, and a duplicate uploads it twice.
+    seen, unique = set(), []
+    for local, remote in jobs:
+        if remote in seen:
+            continue
+        seen.add(remote)
+        unique.append((local, remote))
+    return unique
 
 
 def load_state() -> dict:

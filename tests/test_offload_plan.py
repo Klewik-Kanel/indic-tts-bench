@@ -81,3 +81,87 @@ def test_the_plan_runs_on_a_machine_with_no_runs_directory():
 def test_every_remote_path_is_relative_and_has_no_parent_escape():
     for _local, remote in offload.plan():
         assert ".." not in remote.split("/"), remote
+
+
+# -- the splits ---------------------------------------------------------------
+
+def test_the_frozen_splits_are_carried():
+    """Weights trained on an unrecorded split are not reproducible by anyone.
+    The audio is a public corpus; which utterance landed in train, dev or test
+    is not, and it exists only on the machine that is going away."""
+    import pathlib
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        for rel in ("data/processed/hindi/train.tsv",
+                    "data/processed/hindi/dev.tsv",
+                    "data/processed/hindi/test.tsv",
+                    "data/processed/hindi/SPLITS.lock",
+                    "data/processed/hindi/ladder/1h.tsv",
+                    "data/interim/hindi/manifest.tsv",
+                    "data/raw/dataset_profile.json"):
+            f = repo / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("x", encoding="utf-8")
+        from scripts import offload
+        old_repo, old_runs = offload.REPO, offload.RUNS
+        offload.REPO = repo
+        offload.RUNS = repo / "runs"
+        try:
+            remote = [r for _, r in offload.plan()]
+        finally:
+            offload.REPO, offload.RUNS = old_repo, old_runs
+    assert "data/processed/hindi/SPLITS.lock" in remote, remote
+    assert "data/processed/hindi/train.tsv" in remote
+    assert "data/processed/hindi/ladder/1h.tsv" in remote, "a ladder rung"
+    assert "data/interim/hindi/manifest.tsv" in remote
+    assert "data/raw/dataset_profile.json" in remote
+
+
+def test_no_file_is_queued_twice():
+    """SPLITS.lock matches one pattern and *.tsv another. A duplicate uploads
+    the same bytes twice and makes the dry run's total a lie."""
+    import pathlib
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        for rel in ("data/processed/hindi/train.tsv",
+                    "data/processed/hindi/SPLITS.lock",
+                    "space_static/index.html", "RESULTS.md"):
+            f = repo / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("x", encoding="utf-8")
+        from scripts import offload
+        old_repo, old_runs = offload.REPO, offload.RUNS
+        offload.REPO = repo
+        offload.RUNS = repo / "runs"
+        try:
+            remote = [r for _, r in offload.plan()]
+        finally:
+            offload.REPO, offload.RUNS = old_repo, old_runs
+    assert len(remote) == len(set(remote)), \
+        [r for r in remote if remote.count(r) > 1]
+
+
+def test_no_audio_is_dragged_in_by_the_split_patterns():
+    """data/interim holds the wavs. Only its manifest goes."""
+    import pathlib
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        for rel in ("data/interim/hindi/manifest.tsv",
+                    "data/interim/hindi/hi_0001.wav",
+                    "data/processed/hindi/train.tsv"):
+            f = repo / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"x")
+        from scripts import offload
+        old_repo, old_runs = offload.REPO, offload.RUNS
+        offload.REPO = repo
+        offload.RUNS = repo / "runs"
+        try:
+            remote = [r for _, r in offload.plan()]
+        finally:
+            offload.REPO, offload.RUNS = old_repo, old_runs
+    assert not any(r.endswith(".wav") and r.startswith("data/")
+                   for r in remote), remote
