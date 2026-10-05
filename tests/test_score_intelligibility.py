@@ -573,3 +573,51 @@ def test_every_pass_that_can_fail_reports_kinds():
     All three must summarise, or the next silent one costs another round trip."""
     src = pathlib.Path("scripts/score_intelligibility.py").read_text()
     assert src.count("failure_kinds") >= 6
+
+
+# --- one cause, one line ----------------------------------------------------
+
+def test_a_repeated_multiline_cause_collapses_to_one_kind():
+    """The gated-repository OSError carries a URL and advice on later lines.
+    Keying on the whole message reported 50 failures as 50 distinct causes."""
+    msg = ("OSError: You are trying to access a gated repo.\n"
+           "Make sure to have access to it at https://huggingface.co/ai4bharat\n"
+           "and that your token is valid.")
+    failures = [{"id": f"u{i}", "error": msg} for i in range(50)]
+    kinds = mod._failure_kinds(failures)
+    assert len(kinds) == 1
+    assert next(iter(kinds.values())) == 50
+    assert "gated repo" in next(iter(kinds))
+
+
+def test_two_real_causes_stay_two_kinds():
+    failures = ([{"id": "a", "error": "OSError: gated repo\nmore"}] * 3
+                + [{"id": "b", "error": "ValueError: empty reference"}] * 2)
+    kinds = mod._failure_kinds(failures)
+    assert len(kinds) == 2
+    assert sorted(kinds.values()) == [2, 3]
+
+
+def test_an_empty_message_is_still_counted():
+    kinds = mod._failure_kinds([{"id": "a"}, {"id": "b", "error": ""}])
+    assert kinds == {"unknown": 2}
+
+
+def test_all_three_passes_warm_before_touching_audio():
+    """One line before any work, rather than one per utterance."""
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    assert src.count("_warm_or_fail(") == 4      # 1 definition + 3 call sites
+    for marker, after in (("def reference_floor(", "for row in rows:"),
+                          ("def vocoder_ceiling(", "for row in rows:"),
+                          ("def score_bundle(", "for d in range(")):
+        body = src[src.index(marker):]
+        body = body[:body.index(after)]
+        assert "_warm_or_fail(" in body, marker
+
+
+def test_a_gated_model_gets_an_actionable_message():
+    src = pathlib.Path("scripts/score_intelligibility.py").read_text()
+    i = src.index("def _warm_or_fail(")
+    body = src[i:i + 1200]
+    assert "gated repo" in body
+    assert "HF_TOKEN" in body

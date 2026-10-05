@@ -260,3 +260,33 @@ def test_normalise_for_scoring_collapses_the_gap_punctuation_leaves():
 
 def test_corpus_cer_is_punctuation_free_as_well():
     assert asr.corpus_cer([("कमल, खिला.", "कमल खिला")]) == 0.0
+
+
+# --- loading the recogniser once --------------------------------------------
+
+def test_every_backend_can_be_warmed():
+    """A load failure is a property of the environment, not of an utterance.
+
+    On 5 October a missing HF_TOKEN against a gated repository produced "50
+    failures, 50 distinct" and 50 attempts to download the same model, because
+    the model loads lazily on the first transcribe.
+    """
+    for name in ("indicconformer", "mms"):
+        engine = asr.backend(name, "hindi")
+        assert hasattr(engine, "warm")
+        assert callable(engine.warm)
+
+
+def test_warm_is_defined_on_the_shared_base_not_per_backend():
+    import pathlib
+    src = pathlib.Path("src/eval/asr.py").read_text()
+    base = src[src.index("class _Backend:"):src.index("class IndicConformerCTC")]
+    assert "def warm(" in base
+
+
+def test_warm_calls_the_lazy_loader():
+    import pathlib
+    src = pathlib.Path("src/eval/asr.py").read_text()
+    i = src.index("def warm(")
+    body = src[i:i + 900]
+    assert "self._model()" in body

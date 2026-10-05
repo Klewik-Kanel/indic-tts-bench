@@ -272,6 +272,18 @@ class _Backend:
                 "decoding": "ctc-greedy", "target_sr": TARGET_SR,
                 "resampler": RESAMPLER}
 
+    def warm(self) -> None:
+        """Load the model now, so a load failure is reported once.
+
+        The model loads lazily on the first `transcribe`, which meant a single
+        load failure became one failure per utterance: on 5 October a missing
+        HF_TOKEN against a gated repository produced "50 failures, 50 distinct"
+        and 50 attempts to download the same model. A load failure is a
+        property of the environment, not of an utterance, so the caller warms
+        the engine before the loop and reports it once.
+        """
+        self._model()
+
     def transcribe(self, wav, sample_rate: int) -> str:
         raise NotImplementedError
 

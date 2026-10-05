@@ -93,6 +93,11 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
 
     engine = asr.backend(backend_name, lang, device=device)
     record["asr_detail"] = engine.describe()
+    bad = _warm_or_fail(engine, f"{rid}/{backend_name}")
+    if bad:
+        record["n"] = 0
+        record["skipped"] = f"the recogniser would not load: {bad}"
+        return record
 
     b = load(bundle_dir, device="cpu",
              vocoder=vocoder if manifest.get("needs_vocoder") else None)
@@ -173,9 +178,7 @@ def score_bundle(bundle_dir: pathlib.Path, lang: str, backend_name: str,
     if failures:
         # Distinct causes with counts, so a wall of identical tracebacks
         # becomes one line that names the bug.
-        kinds: dict[str, int] = {}
-        for f in failures:
-            kinds[str(f.get("error"))] = kinds.get(str(f.get("error")), 0) + 1
+        kinds = _failure_kinds(failures)
         record["failure_kinds"] = kinds
         print(f"    {rid}/{backend_name}: {len(failures)} failures, "
               f"{len(kinds)} distinct:", flush=True)
@@ -324,6 +327,10 @@ def reference_floor(backend_name: str, lang: str, split: str,
     from src.g2p import G2P
 
     engine = asr.backend(backend_name, lang, device=device)
+    bad = _warm_or_fail(engine, f"floor {backend_name}")
+    if bad:
+        return {"backend": backend_name, "n": 0, "failures": [],
+                "error": f"the recogniser would not load: {bad}"}
     g2p = G2P.for_language(lang)
     rows = load_split(lang, split)
     if limit:
@@ -350,9 +357,7 @@ def reference_floor(backend_name: str, lang: str, split: str,
                              "error": f"{type(exc).__name__}: {exc}"})
     out = {"backend": backend_name, "n": len(pairs), "failures": failures}
     if failures:
-        kinds: dict[str, int] = {}
-        for f in failures:
-            kinds[str(f.get("error"))] = kinds.get(str(f.get("error")), 0) + 1
+        kinds = _failure_kinds(failures)
         out["failure_kinds"] = kinds
         print(f"    floor {backend_name}: {len(failures)} failures, "
               f"{len(kinds)} distinct:", flush=True)
@@ -411,6 +416,11 @@ def vocoder_ceiling(vocoder_dir: pathlib.Path, backend_name: str, lang: str,
     if not voc.is_vocoder:
         raise SystemExit(f"{vocoder_dir}: not a vocoder bundle")
     engine = asr.backend(backend_name, lang, device=device)
+    bad = _warm_or_fail(engine, f"ceiling {backend_name}")
+    if bad:
+        return {"backend": backend_name, "n": 0,
+                "vocoder": voc.manifest["run_id"], "failures": [],
+                "error": f"the recogniser would not load: {bad}"}
     g2p = G2P.for_language(lang)
     sr = voc.sample_rate
     col = "wav22" if sr == 22050 else "wav16"
@@ -447,9 +457,7 @@ def vocoder_ceiling(vocoder_dir: pathlib.Path, backend_name: str, lang: str,
     # only "nothing transcribed", so the reason sat in a JSON file nobody had
     # a reason to open while MMS's row beside it looked fine.
     if failures:
-        kinds: dict[str, int] = {}
-        for f in failures:
-            kinds[str(f.get("error"))] = kinds.get(str(f.get("error")), 0) + 1
+        kinds = _failure_kinds(failures)
         out["failure_kinds"] = kinds
         print(f"    ceiling {backend_name}: {len(failures)} failures, "
               f"{len(kinds)} distinct:", flush=True)
@@ -489,6 +497,41 @@ def ceiling_table(ceilings: list[dict]) -> str:
                      f"{_fmt(cl['final']):>7s} {_fmt(cl['medial']):>7s} "
                      f"{_fmt(cl['neither']):>7s}")
     return "\n".join(lines)
+
+
+def _failure_kinds(failures: list[dict]) -> dict[str, int]:
+    """Counts by CAUSE, keyed on the first line of the message.
+
+    The whole message is not the key: a gated-repository OSError carries a
+    multi-line body with a URL and advice, and keying on all of it reported
+    "50 failures, 50 distinct" for one cause fifty times.
+    """
+    kinds: dict[str, int] = {}
+    for f in failures:
+        msg = str(f.get("error") or "").strip()
+        head = msg.splitlines()[0] if msg else "unknown"
+        kinds[head] = kinds.get(head, 0) + 1
+    return kinds
+
+
+def _warm_or_fail(engine, label: str) -> str | None:
+    """Load the recogniser now. Returns a reason to abandon the pass, or None.
+
+    A model that cannot be fetched is an environment problem, so it is worth
+    one line before any audio is touched rather than one line per utterance.
+    """
+    try:
+        engine.warm()
+    except Exception as exc:                                  # noqa: BLE001
+        head = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+        reason = f"{type(exc).__name__}: {head}"
+        print(f"    {label}: the recogniser would not load, abandoning this "
+              f"pass: {reason}", flush=True)
+        if "gated repo" in str(exc) or "401" in str(exc):
+            print("      This model is gated. Accept its terms on Hugging "
+                  "Face and put a token in HF_TOKEN, then re-run.", flush=True)
+        return reason
+    return None
 
 
 def _merge_draws(passes: list[dict]) -> list[dict]:
