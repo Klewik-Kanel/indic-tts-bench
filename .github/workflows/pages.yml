@@ -1,7 +1,7 @@
 # Publish space_static to GitHub Pages.
 #
 # The demo lives in exactly one place in this repository: space_static/. It is
-# NOT copied into docs/ for Pages, because two copies of 36 wav files is two
+# NOT copied into docs/ for Pages, because two copies of the wav files are two
 # things to keep in step and the second one drifts. This workflow uploads that
 # directory as the Pages artifact instead, so the served site and the Static
 # Space are byte-identical by construction.
@@ -9,6 +9,13 @@
 # Pages and the Hugging Face Space serve the same files on purpose: neither
 # host is then a single point of failure for the one part of this project a
 # reader can listen to rather than read.
+#
+# The rendered site is produced on the GPU machine and committed from there.
+# Until that happens the repository holds the page and nothing to put in it,
+# which is a normal state and not a failure: this workflow SKIPS then. It
+# fails only on a half-committed site, where something was pushed and
+# something it needs was left behind, because that is the state that would
+# serve a broken page to whoever opens the URL.
 name: pages
 
 on:
@@ -39,20 +46,88 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the page and its data are both present
+      - id: check
+        name: Is there a rendered site to publish?
         run: |
+          # -e, not just -u: without it the python check below printed its
+          # error, exited 1, and the next line still wrote ready=true, so a
+          # data.json no browser can read would have deployed.
+          set -eu
           test -f space_static/index.html || {
-            echo "space_static/index.html is missing"; exit 1; }
-          test -f space_static/data.json || {
-            echo "space_static/data.json is missing: the page reads it at load"
-            echo "and renders an empty listening test without it"; exit 1; }
-          clips=$(find space_static/audio -name '*.wav' | wc -l)
-          echo "$clips wav files"
-          test "$clips" -gt 0 || { echo "no audio to serve"; exit 1; }
+            echo "::error::space_static/index.html is missing"; exit 1; }
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+          data=0; [ -f space_static/data.json ] && data=1
+          clips=0
+          [ -d space_static/audio ] &&
+            clips=$(find space_static/audio -name '*.wav' | wc -l | tr -d ' ')
+          echo "data.json: $data   wav files: $clips"
+
+          if [ "$data" -eq 0 ] && [ "$clips" -eq 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No rendered site in this commit. Run"
+            echo "::notice::scripts/render_demo.py on the GPU machine and commit"
+            echo "::notice::space_static/data.json with space_static/audio/."
+            echo "::notice::Skipping the deploy rather than failing: nothing"
+            echo "::notice::has been published yet, so there is nothing broken."
+            exit 0
+          fi
+
+          # Past here something WAS committed, so a missing piece is a real
+          # fault: the page fetches data.json at load and renders an empty
+          # listening test without it, and a data.json naming clips that are
+          # not in the commit renders players that fall silent.
+          if [ "$data" -eq 0 ]; then
+            echo "::error::space_static/audio holds $clips wav files but"
+            echo "::error::space_static/data.json is not committed. The page"
+            echo "::error::reads it at load and shows nothing without it."
+            exit 1
+          fi
+          if [ "$clips" -eq 0 ]; then
+            echo "::error::space_static/data.json is committed but no wav files"
+            echo "::error::are. Every player on the page would be silent."
+            exit 1
+          fi
+
+          # Python's json reads Infinity, -Infinity and NaN. A browser's
+          # JSON.parse refuses the whole document on any of them, and one such
+          # token blanks every arm. This must be the stricter of the two.
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import sys
+
+
+          def refuse(token):
+              raise ValueError(f"{token} is not JSON; a browser refuses the "
+                               "whole file and the page renders nothing")
+
+
+          p = pathlib.Path("space_static/data.json")
+          try:
+              d = json.loads(p.read_text(encoding="utf-8"),
+                             parse_constant=refuse)
+          except Exception as exc:
+              sys.exit(f"::error::{p} is not readable JSON: {exc}")
+
+          missing = [r["audio"] for s in d.get("sentences", [])
+                     for r in (s.get("runs") or {}).values()
+                     if r and r.get("audio")
+                     and not pathlib.Path("space_static", r["audio"]).exists()]
+          if missing:
+              sys.exit(f"::error::{len(missing)} clips named in data.json are "
+                       f"not in this commit, first: {missing[0]}")
+          print(f"{len(d.get('sentences', []))} sentences, "
+                f"{len(d.get('runs', []))} arms, data.json parses strictly")
+          PY
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/configure-pages@v5
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: space_static
-      - id: deploy
+      - if: steps.check.outputs.ready == 'true'
+        id: deploy
         uses: actions/deploy-pages@v4
