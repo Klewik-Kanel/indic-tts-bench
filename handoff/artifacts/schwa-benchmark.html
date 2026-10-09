@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Schwa Deletion Benchmark</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#f5f7f8; --surface:#ffffff; --surface-2:#eef1f3;
+  --ink:#161a20; --muted:#5a626e; --faint:#8b93a0;
+  --line:#e0e5e9; --line-strong:#c8d0d7;
+  --accent:#17494d; --accent-soft:#dceaea;
+  --elide:#b0432a; --elide-soft:#f6e2dd;
+  --ok:#2c6e4b; --ok-soft:#dcece3;
+  --work:#96701c; --work-soft:#f3e9d3;
+  --wait:#8b93a0; --wait-soft:#e8ebee;
+  --shadow:0 1px 2px rgba(20,28,36,.05), 0 4px 16px -8px rgba(20,28,36,.14);
+  --display:"Spectral",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#111519; --surface:#181d23; --surface-2:#20262e;
+    --ink:#e6eaee; --muted:#98a1ad; --faint:#6d7784;
+    --line:#272e37; --line-strong:#3a434e;
+    --accent:#5aa9a2; --accent-soft:#16302f;
+    --elide:#e07a60; --elide-soft:#3a221c;
+    --ok:#5cb384; --ok-soft:#162c21;
+    --work:#d1a445; --work-soft:#312817;
+    --wait:#6d7784; --wait-soft:#22282f;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 18px -8px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#111519; --surface:#181d23; --surface-2:#20262e;
+  --ink:#e6eaee; --muted:#98a1ad; --faint:#6d7784;
+  --line:#272e37; --line-strong:#3a434e;
+  --accent:#5aa9a2; --accent-soft:#16302f;
+  --elide:#e07a60; --elide-soft:#3a221c;
+  --ok:#5cb384; --ok-soft:#162c21;
+  --work:#d1a445; --work-soft:#312817;
+  --wait:#6d7784; --wait-soft:#22282f;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 18px -8px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto;padding-inline:20px;padding-block:28px 64px}
+
+/* ---------- masthead ---------- */
+.mast{border-bottom:2px solid var(--ink);padding-bottom:18px;margin-bottom:26px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.eyebrow .dot{width:4px;height:4px;border-radius:50%;background:var(--line-strong)}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(30px,5vw,46px);
+  line-height:1.08;margin:12px 0 6px;text-wrap:balance;letter-spacing:-.01em}
+/* the elision motif: the thing the study is about, rendered as type */
+.elide{color:var(--elide);text-decoration:line-through;text-decoration-thickness:2px}
+.question{font-family:var(--display);font-style:italic;font-size:clamp(15px,2.1vw,18px);
+  color:var(--muted);max-width:62ch;margin:0}
+
+/* ---------- meters ---------- */
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);margin-bottom:30px}
+.meter{background:var(--surface);padding:14px 16px}
+.meter dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 6px}
+.meter dd{margin:0;font-family:var(--mono);font-size:25px;font-weight:500;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.meter dd small{font-size:13px;color:var(--faint);font-weight:400}
+.bar{height:3px;background:var(--surface-2);margin-top:9px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar.spent i{background:var(--work)}
+
+h2{font-family:var(--display);font-size:21px;font-weight:600;margin:0;letter-spacing:-.005em}
+.sec{margin-top:38px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+  border-bottom:1px solid var(--line-strong);padding-bottom:8px;margin-bottom:16px}
+.sec-note{font-size:12.5px;color:var(--faint);font-family:var(--mono)}
+
+/* ---------- blockers: the only thing that needs to shout ---------- */
+.blockers{border-left:3px solid var(--elide);background:var(--elide-soft);padding:14px 18px}
+.blockers ul{margin:8px 0 0;padding-left:18px}
+.blockers li{margin-bottom:6px}
+.blockers li:last-child{margin-bottom:0}
+.blockers code{font-family:var(--mono);font-size:12.5px;background:var(--surface);
+  padding:1px 5px;border:1px solid var(--line)}
+.clear{color:var(--muted);font-style:italic}
+
+/* ---------- phases ---------- */
+.phase{border:1px solid var(--line);background:var(--surface);margin-bottom:-1px}
+.phase-top{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;
+  padding:12px 16px;cursor:pointer;width:100%;background:none;border:0;
+  font:inherit;color:inherit;text-align:left}
+.phase-top:hover{background:var(--surface-2)}
+.phase-top:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pnum{font-family:var(--mono);font-size:12px;color:var(--faint);
+  border:1px solid var(--line-strong);padding:3px 0;text-align:center}
+.pname{font-weight:500}
+.pmeta{font-family:var(--mono);font-size:11.5px;color:var(--faint);display:block;margin-top:2px}
+.chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 8px;white-space:nowrap;border:1px solid transparent}
+.chip.done{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.chip.active{background:var(--work-soft);color:var(--work);border-color:var(--work)}
+.chip.blocked{background:var(--elide-soft);color:var(--elide);border-color:var(--elide)}
+.chip.pending{background:var(--wait-soft);color:var(--wait);border-color:var(--line-strong)}
+.tasks{padding:2px 16px 14px 74px;border-top:1px solid var(--line);background:var(--surface-2)}
+.task{display:flex;gap:10px;align-items:flex-start;padding:5px 0;font-size:14px}
+.task input{margin:3px 0 0;accent-color:var(--accent);width:15px;height:15px;flex:none}
+.task.is-done span{color:var(--faint);text-decoration:line-through}
+.task label{cursor:pointer}
+
+/* ---------- run matrix ---------- */
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);border-bottom:1px solid var(--line-strong);font-weight:500}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+td.id{font-family:var(--mono);color:var(--faint);font-size:12.5px}
+tbody tr:hover{background:var(--surface-2)}
+select{font:inherit;font-size:12px;font-family:var(--mono);background:var(--surface);
+  color:var(--ink);border:1px solid var(--line-strong);padding:2px 4px}
+.grp td{background:var(--surface-2);font-family:var(--mono);font-size:11px;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+
+/* ---------- log ---------- */
+.log{list-style:none;margin:0;padding:0}
+.log li{display:grid;grid-template-columns:92px 1fr;gap:14px;padding:9px 0;
+  border-bottom:1px solid var(--line);font-size:14px}
+.log time{font-family:var(--mono);font-size:11.5px;color:var(--faint);padding-top:3px}
+.log b{font-weight:600}
+.foot{margin-top:44px;padding-top:14px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:11.5px;color:var(--faint);
+  display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
+.live{display:inline-flex;align-items:center;gap:6px}
+.live i{width:6px;height:6px;border-radius:50%;background:var(--wait);flex:none}
+.live.on i{background:var(--ok)}
+@media (prefers-reduced-motion:no-preference){
+  .live.on i{animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+}
+@media (max-width:560px){
+  .phase-top{grid-template-columns:34px 1fr;row-gap:8px}
+  .phase-top .chip{grid-column:2}
+  .tasks{padding-left:20px}
+  .log li{grid-template-columns:1fr;gap:2px}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow">
+      <span>M.Tech dissertation</span><span class="dot"></span>
+      <span>NSUT New Delhi</span><span class="dot"></span>
+      <span>Supervisor: Dr. Shobha Bhatt</span>
+    </p>
+    <h1>Does k<span class="elide">a</span>mal still need a G2P?</h1>
+    <p class="question">Whether explicit Devanagari preprocessing still buys anything for neural TTS, or modern architectures absorb Hindi schwa deletion from data alone. Hindi is the testbed, Marathi the same-script control, and a 10&nbsp;h to 10&nbsp;min ladder varies resource level with everything else held fixed.</p>
+  </header>
+
+  <dl class="meters">
+    <div class="meter">
+      <dt>Phases complete</dt>
+      <dd id="m-phase">0<small> / 0</small></dd>
+      <div class="bar"><i id="b-phase" style="width:0%"></i></div>
+    </div>
+    <div class="meter">
+      <dt>GPU-hours spent</dt>
+      <dd id="m-gpu">0<small> / 0 est</small></dd>
+      <div class="bar spent"><i id="b-gpu" style="width:0%"></i></div>
+    </div>
+    <div class="meter">
+      <dt>Training runs done</dt>
+      <dd id="m-runs">0<small> / 0</small></dd>
+      <div class="bar"><i id="b-runs" style="width:0%"></i></div>
+    </div>
+    <div class="meter">
+      <dt>Waiting on you</dt>
+      <dd id="m-block">&mdash;</dd>
+      <div class="bar"><i id="b-block" style="width:0%;background:var(--elide)"></i></div>
+    </div>
+  </dl>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Blocked on you</h2>
+      <span class="sec-note">decisions and network steps</span></div>
+    <div class="blockers" id="blockers"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Phases</h2>
+      <span class="sec-note">click to open &middot; ticks are saved</span></div>
+    <div id="phases"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Run matrix</h2>
+      <span class="sec-note" id="runs-note"></span></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Run</th><th>Acoustic model</th><th>Lang</th><th>Input</th>
+        <th class="n">GPU-h</th><th>Status</th></tr></thead>
+      <tbody id="runs"></tbody>
+    </table></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2>Findings and decisions</h2>
+      <span class="sec-note">append only</span></div>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <footer class="foot">
+    <span class="live" id="live"><i></i><span>connecting</span></span>
+    <span id="updated"></span>
+  </footer>
+</div>
+
+<script>
+/* Structure of the project is defined here; where each item STANDS lives in db.
+   That split keeps the page readable when db is unavailable. */
+const GPU_BUDGET = 150;   // estimate; the VITS re-run was declined, the seed pair added
+
+const PHASES = [
+  {id:"p0", n:"0", name:"Front end and scaffold", weeks:"1 wk", tasks:[
+    ["t1","Repository scaffold and standing rules"],
+    ["t2","Devanagari normaliser with combining-mark handling"],
+    ["t3","Shared IPA inventory across Hindi and Marathi"],
+    ["t4","Schwa deletion as a switchable stage"],
+    ["t5","Grapheme arm sharing the same normalisation"],
+    ["t6","Unit tests green"],
+    ["t7","Contested-schwa stress-test set, scored against speaker judgement"]]},
+  {id:"p1", n:"1", name:"Access and credentials", weeks:"0.5 wk", tasks:[
+    ["t1","Project folder connected"],
+    ["t2","Egress mapped on both environments"],
+    ["t3","Kaggle token installed and phone verification done"],
+    ["t4","Hugging Face write token installed"],
+    ["t5","GitHub repository created and pushed"],
+    ["t6","Kaggle GPU round-trip proven with a trivial job"]]},
+  {id:"p2", n:"2", name:"Corpora", weeks:"2 wk", tasks:[
+    ["t1","IndicTTS Hindi downloaded and profiled"],
+    ["t2","IndicTTS Marathi downloaded and profiled"],
+    ["t3","Resample, trim, loudness normalise to &minus;23 LUFS"],
+    ["t4","Single speaker selected per language, hours matched"],
+    ["t5","Test split frozen before any training"],
+    ["t6","Nested ladder subsets built"],
+    ["t7","G2P across the full corpus, zero unknown symbols"],
+    ["t8","Front-end coverage asserted against the vocabulary, per language and arm"]]},
+  {id:"p3", n:"3", name:"Training harness", weeks:"1.5 wk", tasks:[
+    ["t1","Shared config schema, one YAML per run"],
+    ["t8","Shared loop: frame-budget batching, LR schedule, checkpointing"],
+    ["t6","Resume proven bit-identical to an uninterrupted run"],
+    ["t2","FastSpeech 2 adapter with an internal aligner, MFA dropped"],
+    ["t3","VITS adapter &mdash; no warm start; the false <code>init_from</code> is corrected in the configs rather than rewritten (3 Oct)"],
+    ["t9","Two-optimiser path: per-optimiser clipping, both states checkpointed"],
+    ["t10","Adapter parity: the two input arms see identical batches"],
+    ["t4","Matcha-TTS adapter"],
+    ["t13","HiFi-GAN adapter, fitted to our mels, with a stopping criterion"],
+    ["t11","A vocoder checkpoint warm-starts the fine-tune"],
+    ["t12","Budget settled as frames, with the 1.3781&times; audio asymmetry declared in the methods table"],
+    ["t5","Checkpoint push to Hugging Face every N steps"],
+    ["t14","Startup assertion: a declared <code>init_from</code> an adapter never reads must refuse to run"],
+    ["t15","Gradient clipping: measure whether <code>clip 1.0</code> is the limiter, outside the matrix"],
+    ["t16","Resolve the 29.9&times; loss discontinuity between the 5&nbsp;h and 1&nbsp;h rungs"]]},
+  {id:"p4", n:"4", name:"Main runs and ablation", weeks:"3 wk", tasks:[
+    ["t1","Two Hindi phoneme runs (Matcha moved to future work)"],
+    ["t2","Two Hindi grapheme runs"],
+    ["t5","VITS Hindi re-run considered and declined, 3 Oct: equal compute kept over better audio"],
+    ["t3","HiFi-GAN fine-tuned on Hindi ground-truth mels"],
+    ["t4","Three seeds on one cell for the variance floor"]]},
+  {id:"p5", n:"5", name:"Ladder and control", weeks:"2 wk", tasks:[
+    ["t1","Eight ladder runs, 5 h down to 10 min"],
+    ["t2","Four Marathi runs, both arms in both architectures"],
+    ["t3","Marathi HiFi-GAN"]]},
+  {id:"p6", n:"6", name:"Evaluation", weeks:"1.5 wk", tasks:[
+    ["t1","MCD with DTW alignment"],
+    ["t11","MCD reported against a chance level, since the raw figure cannot be read alone"],
+    ["t2","F0 RMSE and voiced/unvoiced error"],
+    ["t10","Duration bias: milliseconds of excess per deletion site, which needs no vocoder and cannot saturate"],
+    ["t7","An ASR model for Hindi and Marathi chosen and downloaded"],
+    ["t3","Character error rate with the recogniser's own floor on the real recordings"],
+    ["t13","Punctuation stripped in one shared normalisation, so the partition is not computed on it"],
+    ["t9","Per-position errors: deletion-derived word-final consonants against the rest"],
+    ["t12","Full test split with a bootstrap interval over utterances, replacing the 10-utterance pass"],
+    ["t8","MOS proxies checked on Devanagari speech, or labelled English-trained"],
+    ["t4","UTMOSv2 and NISQA, labelled as proxies"],
+    ["t5","Stress-test error rates per architecture"],
+    ["t6","Native macOS RTF benchmark on the M5"]]},
+  {id:"pg", n:"7", name:"Demo and listening interface", weeks:"1 wk", tasks:[
+    ["t1","Export bundle carrying weights, vocabulary, audio params and provenance"],
+    ["t2","One synthesis path shared by the demo and the listening test"],
+    ["t3","CPU latency and bundle size measured on real weights"],
+    ["t4","Demo sentence set selected from the held-out split by a stated rule"],
+    ["t5","Renderer: per-arm audio, token sequences, natural reference, provenance"],
+    ["t6","Static listening page, self-contained, light and dark"],
+    ["t7","Published as a Static Space"],
+    ["t8","Gradio app kept for live free text from a notebook"],
+    ["t9","Mel-only arms wired in once the vocoder lands"],
+    ["t10","Marathi arms added alongside Hindi"]]},
+  {id:"p7", n:"8", name:"Listening test", weeks:"2 wk", tasks:[
+    ["t6","Ethics or consent process started, if the institution requires one"],
+    ["t1","Stimuli selected, anchors included"],
+    ["t2","Web interface built, Latin square balanced"],
+    ["t3","Pilot with five listeners"],
+    ["t4","Twenty listeners recruited"],
+    ["t5","Analysis with confidence intervals and rater reliability"]]},
+  {id:"p8", n:"9", name:"Write-up and release", weeks:"2 wk", tasks:[
+    ["t1","Paper draft"],
+    ["t5","Deviations, corrections and future work emitted from the configs, not retyped"],
+    ["t2","Testbed released, reproducible from configs"],
+    ["t3","Checkpoints published"],
+    ["t4","Stress-test set released with gold pronunciations"]]}
+];
+
+const RUNS = [
+  ["Hindi, main — Matcha (r03) moved to future work on 2 Oct; the adapter is written and kept"],
+  ["r01","FastSpeech 2","hi","phoneme",12],
+  ["r02","VITS","hi","phoneme",12],
+  ["Seed variance floors — one per architecture, because a floor does not transfer between them. Nothing but the seed differs from the reference cell, so the spread is the smallest difference the setup can resolve. The VITS pair runs first: VITS needs no vocoder, so it is the half that can be scored today"],
+  ["r22","VITS","hi","seed 1 (r02)",10],
+  ["r23","VITS","hi","seed 2 (r02)",10],
+  ["r20","FastSpeech 2","hi","seed 1 (r01)",6],
+  ["r21","FastSpeech 2","hi","seed 2 (r01)",6],
+  ["Hindi, ablation"],
+  ["r04","FastSpeech 2","hi","grapheme",8],
+  ["r05","VITS","hi","grapheme",8],
+  ["Vocoder — fine-tuned on our own mels; GPU-h is an upper bound, a stopping criterion sets the step count"],
+  ["r06","HiFi-GAN","hi","GT mel",10],
+  ["r17","HiFi-GAN","mr","GT mel",10],
+  ["Data ladder — the 9 h rung is r01 and r02, not trained twice"],
+  ["r07","FastSpeech 2","hi","5 h",5],
+  ["r08","FastSpeech 2","hi","1 h",5],
+  ["r09","FastSpeech 2","hi","30 min",5],
+  ["r10","FastSpeech 2","hi","10 min",5],
+  ["r11","VITS","hi","5 h",5],
+  ["r12","VITS","hi","1 h",5],
+  ["r13","VITS","hi","30 min",5],
+  ["r14","VITS","hi","10 min",5],
+  ["Marathi, control — four arms: without the graphemic pair there is no Marathi gap to compare"],
+  ["r15","FastSpeech 2","mr","phoneme",12],
+  ["r16","VITS","mr","phoneme",12],
+  ["r18","FastSpeech 2","mr","grapheme",8],
+  ["r19","VITS","mr","grapheme",8]
+];
+
+const RUN_STATES = ["queued","running","done","failed"];
+const RUN_ROWS = RUNS.filter(r => r.length > 1);
+const $ = s => document.querySelector(s);
+let db = null, state = {tasks:{}, runs:{}, phases:{}}, log = [], blockers = [];
+
+/* ---------- rendering ---------- */
+function phaseStatus(p){
+  const s = state.phases[p.id];
+  if (s) return s;
+  const done = p.tasks.filter(t => state.tasks[p.id+"."+t[0]]).length;
+  if (done === p.tasks.length) return "done";
+  if (done > 0) return "active";
+  return "pending";
+}
+
+function renderPhases(){
+  const host = $("#phases");
+  host.textContent = "";
+  for (const p of PHASES){
+    const done = p.tasks.filter(t => state.tasks[p.id+"."+t[0]]).length;
+    const st = phaseStatus(p);
+    const wrap = document.createElement("div");
+    wrap.className = "phase";
+
+    const btn = document.createElement("button");
+    btn.className = "phase-top";
+    btn.type = "button";
+    btn.setAttribute("aria-expanded","false");
+    btn.innerHTML =
+      `<span class="pnum">${p.n}</span>`+
+      `<span><span class="pname">${p.name}</span>`+
+      `<span class="pmeta">${done} of ${p.tasks.length} done &middot; ${p.weeks}</span></span>`+
+      `<span class="chip ${st}">${st}</span>`;
+
+    const panel = document.createElement("div");
+    panel.className = "tasks";
+    panel.hidden = st === "done";
+    for (const [tid,text] of p.tasks){
+      const key = p.id+"."+tid;
+      const row = document.createElement("div");
+      row.className = "task" + (state.tasks[key] ? " is-done" : "");
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.id = key; cb.checked = !!state.tasks[key];
+      cb.addEventListener("change", () => toggleTask(key, cb.checked));
+      const lab = document.createElement("label");
+      lab.setAttribute("for", key);
+      lab.innerHTML = `<span>${text}</span>`;
+      row.append(cb, lab);
+      panel.append(row);
+    }
+    btn.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      btn.setAttribute("aria-expanded", String(!panel.hidden));
+    });
+    wrap.append(btn, panel);
+    host.append(wrap);
+  }
+}
+
+function renderRuns(){
+  const body = $("#runs");
+  body.textContent = "";
+  for (const r of RUNS){
+    const tr = document.createElement("tr");
+    if (r.length === 1){
+      tr.className = "grp";
+      tr.innerHTML = `<td colspan="6">${r[0]}</td>`;
+      body.append(tr); continue;
+    }
+    const [id,arch,lang,rep,hrs] = r;
+    const cur = state.runs[id] || "queued";
+    tr.innerHTML = `<td class="id">${id}</td><td>${arch}</td><td>${lang}</td>`+
+      `<td>${rep}</td><td class="n">${hrs}</td><td></td>`;
+    const sel = document.createElement("select");
+    sel.setAttribute("aria-label", `Status for run ${id}`);
+    for (const s of RUN_STATES){
+      const o = document.createElement("option");
+      o.value = s; o.textContent = s; if (s === cur) o.selected = true;
+      sel.append(o);
+    }
+    sel.addEventListener("change", () => setRun(id, sel.value));
+    tr.lastElementChild.append(sel);
+    body.append(tr);
+  }
+  $("#runs-note").innerHTML =
+    `${RUN_ROWS.length} runs &middot; Matcha in future work &middot; vocoders fine-tuned on our mels`;
+}
+
+function renderLog(){
+  const host = $("#log");
+  host.textContent = "";
+  if (!log.length){
+    host.innerHTML = `<li><time>&mdash;</time><span class="clear">Nothing logged yet.</span></li>`;
+    return;
+  }
+  // Sort by document id, which is the insertion order (l01, l02, ...).
+  // Sorting on the human date string breaks across month boundaries.
+  for (const e of [...log].sort((a,b)=> (b.id||"").localeCompare(a.id||""))){
+    const li = document.createElement("li");
+    li.innerHTML = `<time>${e.at||""}</time><span><b>${e.title||""}</b> ${e.body||""}</span>`;
+    host.append(li);
+  }
+}
+
+function renderBlockers(){
+  const host = $("#blockers");
+  if (!blockers.length){
+    host.innerHTML = `<span class="clear">Nothing is waiting on you right now.</span>`;
+  } else {
+    host.innerHTML = "<ul>" + blockers.map(b =>
+      `<li>${b.text}${b.cmd ? ` <code>${b.cmd}</code>` : ""}</li>`).join("") + "</ul>";
+  }
+  $("#m-block").textContent = blockers.length || "—";
+  $("#b-block").style.width = blockers.length ? "100%" : "0%";
+}
+
+function renderMeters(){
+  // Totals come from the arrays above, so adding a phase or a run cannot leave
+  // a hard-coded denominator behind to quietly disagree with the page.
+  const total = PHASES.length;
+  const donePhases = PHASES.filter(p => phaseStatus(p) === "done").length;
+  $("#m-phase").innerHTML = `${donePhases}<small> / ${total}</small>`;
+  $("#b-phase").style.width = (donePhases/total*100) + "%";
+
+  let spent = 0, doneRuns = 0;
+  for (const r of RUN_ROWS){
+    const st = state.runs[r[0]] || "queued";
+    if (st === "done"){ spent += r[4]; doneRuns++; }
+    else if (st === "running") spent += r[4];
+  }
+  $("#m-gpu").innerHTML = `${spent}<small> / ${GPU_BUDGET} est</small>`;
+  $("#b-gpu").style.width = Math.min(100, spent/GPU_BUDGET*100) + "%";
+  $("#m-runs").innerHTML = `${doneRuns}<small> / ${RUN_ROWS.length}</small>`;
+  $("#b-runs").style.width = (doneRuns/RUN_ROWS.length*100) + "%";
+}
+
+function renderAll(){ renderPhases(); renderRuns(); renderLog(); renderBlockers(); renderMeters(); }
+
+/* ---------- persistence ---------- */
+async function toggleTask(key, val){
+  state.tasks[key] = val;
+  renderAll();
+  if (!db) return;
+  try { await db.doc("state/tasks").set(state.tasks); } catch (e) {}
+}
+async function setRun(id, val){
+  state.runs[id] = val;
+  renderAll();
+  if (!db) return;
+  try { await db.doc("state/runs").set(state.runs); } catch (e) {}
+}
+
+function setLive(on, label){
+  const el = $("#live");
+  el.classList.toggle("on", on);
+  el.lastElementChild.textContent = label;
+}
+
+renderAll();
+setLive(false, "local only");
+
+(async () => {
+  db = await claude.use("db");
+  if (!db){ setLive(false, "read only, no sync"); return; }
+  setLive(true, "live");
+  // data() is a METHOD on a snapshot, not a property, and it returns
+  // undefined when the document does not exist. Reading it as a property
+  // hands back the function, which is truthy, so every field then reads as
+  // undefined and every filter on those fields passes.
+  const body = d => (d && d.exists ? (d.data() || {}) : {});
+  const rows = s => (s && s.docs ? s.docs.map(d => ({id: d.id, ...body(d)})) : []);
+
+  db.doc("state/tasks").onSnapshot(d => { state.tasks = body(d); renderAll(); });
+  db.doc("state/runs").onSnapshot(d => { state.runs = body(d); renderAll(); });
+  db.doc("state/phases").onSnapshot(d => { state.phases = body(d); renderAll(); });
+  db.collection("log").onSnapshot(s => { log = rows(s); renderLog(); });
+  db.collection("blockers").onSnapshot(s => {
+    blockers = rows(s).filter(b => b.open === true && b.text);
+    renderBlockers(); renderMeters();
+  });
+  db.doc("state/meta").onSnapshot(d => {
+    const u = body(d).updated;
+    $("#updated").textContent = u ? `Claude last updated this ${u}` : "";
+  });
+})();
+</script>
+
+</body>
+</html>

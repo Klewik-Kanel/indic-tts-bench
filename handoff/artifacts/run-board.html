@@ -1,0 +1,460 @@
+<title>Indic TTS Run Board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: single measured column; an instrument panel above, a ledger below. */
+:root{
+  --bg:#f6f4ef; --panel:#fffdf9; --ink:#1b1a17; --ink-soft:#5d5a51; --ink-faint:#8d8980;
+  --rule:#ddd8cc; --accent:#3a3f8f; --accent-soft:#e6e5f4;
+  --ok:#2f6b46; --warn:#8a5a12; --crit:#8d2f2a; --idle:#8d8980;
+  --ok-bg:#e3efe7; --warn-bg:#f6ecd9; --crit-bg:#f5e3e1; --idle-bg:#ebe8e0;
+  --display:"Newsreader",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#13130f; --panel:#1c1b17; --ink:#eceade; --ink-soft:#a8a49a; --ink-faint:#787469;
+  --rule:#302e27; --accent:#9ea4f0; --accent-soft:#23243a;
+  --ok:#7fc096; --warn:#d8aa5c; --crit:#e38a84; --idle:#787469;
+  --ok-bg:#1b2a21; --warn-bg:#2b2416; --crit-bg:#2d1d1c; --idle-bg:#24231d;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#13130f; --panel:#1c1b17; --ink:#eceade; --ink-soft:#a8a49a; --ink-faint:#787469;
+  --rule:#302e27; --accent:#9ea4f0; --accent-soft:#23243a;
+  --ok:#7fc096; --warn:#d8aa5c; --crit:#e38a84; --idle:#787469;
+  --ok-bg:#1b2a21; --warn-bg:#2b2416; --crit-bg:#2d1d1c; --idle-bg:#24231d;
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;
+  padding-block:28px 72px;padding-left:20px;padding-right:20px;margin:0}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:30px}
+h1,h2,h3{text-wrap:balance;margin:0}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,5vw,40px);letter-spacing:-.01em;line-height:1.1}
+h2{font-family:var(--display);font-weight:600;font-size:21px;letter-spacing:-.005em}
+h3{font-family:var(--body);font-weight:600;font-size:14px}
+p{margin:0}
+a{color:var(--accent)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+.sub{color:var(--ink-soft);font-size:14px;max-width:66ch}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* masthead */
+header .schwa{font-family:var(--display);font-size:13px;color:var(--ink-soft);margin-top:10px}
+header .schwa b{font-weight:600;color:var(--ink)}
+
+/* counter strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.cell{background:var(--panel);padding:14px 16px;min-width:0}
+.cell .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+.cell .v{font-family:var(--display);font-size:27px;font-weight:600;line-height:1.1;margin-top:4px;font-variant-numeric:tabular-nums}
+.cell .v small{font-family:var(--mono);font-size:13px;font-weight:400;color:var(--ink-faint)}
+.cell .n{font-size:12px;color:var(--ink-soft);margin-top:2px}
+
+/* generic section */
+section{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:3px;padding:18px}
+
+/* the dilemma */
+.dilemma{border-left:3px solid var(--warn)}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:4px}
+.opt{border:1px solid var(--rule);border-radius:3px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0;background:var(--bg)}
+.opt.picked{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.opt h3{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
+.opt .name{font-family:var(--display);font-size:18px;font-weight:600;line-height:1.2}
+.opt ul{margin:0;padding-left:17px;font-size:13.5px;color:var(--ink-soft);display:flex;flex-direction:column;gap:4px}
+.cost{font-family:var(--mono);font-size:12px;color:var(--ink)}
+button{font-family:var(--body);font-size:13px;font-weight:500;cursor:pointer;border-radius:3px;
+  border:1px solid var(--rule);background:var(--bg);color:var(--ink);padding:7px 13px}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] button.primary{color:#13130f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#13130f}}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button[disabled]{opacity:.45;cursor:default}
+.decided{font-family:var(--mono);font-size:12px;color:var(--ok);display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+
+/* checklist */
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.steps li{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--rule)}
+.steps li:first-child{border-top:0}
+.steps input[type=checkbox]{margin-top:3px;accent-color:var(--accent);width:15px;height:15px;flex:none}
+.steps .txt{min-width:0}
+.steps .txt .t{font-size:14.5px}
+.steps li.done .txt .t{color:var(--ink-faint);text-decoration:line-through}
+.steps .txt .d{font-size:12.5px;color:var(--ink-soft)}
+.gate{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+
+/* terminal blocks */
+.term{border:1px solid var(--rule);border-radius:3px;overflow:hidden;background:var(--panel)}
+.term .bar{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.term .bar .lbl{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+.term .bar .ttl{font-family:var(--body);font-weight:600;font-size:14px}
+.term pre{margin:0;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.62;color:var(--ink)}
+.term .why{padding:0 14px 13px;font-size:12.5px;color:var(--ink-soft)}
+
+/* matrix */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:500}
+tr:last-child td{border-bottom:0}
+td.id{font-family:var(--mono);font-weight:600}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+tr.blocked td.id{color:var(--crit)}
+.pill{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  padding:2px 7px;border-radius:2px;border:1px solid transparent}
+.pill.done{color:var(--ok);background:var(--ok-bg)}
+.pill.running{color:var(--warn);background:var(--warn-bg)}
+.pill.blocked{color:var(--crit);background:var(--crit-bg)}
+.pill.queued,.pill.cut{color:var(--idle);background:var(--idle-bg)}
+select{font-family:var(--mono);font-size:11.5px;padding:3px 5px;border:1px solid var(--rule);border-radius:2px;
+  background:var(--bg);color:var(--ink)}
+
+/* log */
+.log{display:flex;flex-direction:column;gap:0}
+.log .entry{display:grid;grid-template-columns:118px 1fr;gap:14px;padding:11px 0;border-top:1px solid var(--rule);min-width:0}
+.log .entry:first-child{border-top:0}
+.log time{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);padding-top:2px}
+.log .body{min-width:0;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.addlog{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}
+.addlog textarea{flex:1 1 240px;min-width:0;font-family:var(--body);font-size:14px;padding:9px;border:1px solid var(--rule);
+  border-radius:3px;background:var(--bg);color:var(--ink);resize:vertical;min-height:44px}
+.empty{font-size:13.5px;color:var(--ink-faint);font-style:italic}
+.note{font-size:12.5px;color:var(--ink-faint)}
+.offline{font-family:var(--mono);font-size:11px;color:var(--warn)}
+footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12.5px;color:var(--ink-faint);display:flex;flex-direction:column;gap:5px}
+@media (prefers-reduced-motion:no-preference){.card,.term,.cell{transition:border-color .15s}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">M.Tech dissertation · NSUT New Delhi · Supervisor: Dr. Shobha Bhatt</p>
+  <h1>Does <span style="font-family:var(--display)">कमल</span> still need a G2P?</h1>
+  <p class="sub" style="margin-top:10px">Whether explicit Devanagari grapheme-to-phoneme conversion still buys anything for neural TTS, or whether the architecture absorbs Hindi schwa deletion from data alone. Hindi is the testbed, Marathi the same-script control, a 9 h to 10 min ladder varies resource level, and every run is held to one budget: 100,000 steps at 12,000 mel frames in bf16 on one A100-40GB.</p>
+  <p class="schwa">The thing being measured: <b>कमल</b> is /kəməl/ but <b>कमलों</b> is /kəmloː/ — the second schwa drops. 39/47 of the rule's calls match native-speaker judgement.</p>
+</header>
+
+<div class="strip" id="strip">
+  <div class="cell"><div class="k">Acoustic runs done</div><div class="v" id="c-runs">—<small> / 17</small></div><div class="n" id="c-runs-n">loading</div></div>
+  <div class="cell"><div class="k">GPU-hours booked</div><div class="v" id="c-gpu">—</div><div class="n" id="c-gpu-n">loading</div></div>
+  <div class="cell"><div class="k">Open blockers</div><div class="v" id="c-block">—</div><div class="n" id="c-block-n">loading</div></div>
+  <div class="cell"><div class="k">Until Mon 5 Oct 23:59</div><div class="v mono" id="c-clock">—</div><div class="n">full matrix needs 61.1 h</div></div>
+</div>
+
+<section id="dilemma-sec">
+  <div>
+    <p class="eyebrow">Decision 1 · blocks evaluation and the demo</p>
+    <h2>FastSpeech 2 is mute. Which vocoder?</h2>
+  </div>
+  <div class="card dilemma">
+    <p class="sub">FastSpeech 2 and Matcha emit mel spectrograms. Without a vocoder, r01 and r04 — the Hindi ablation pair, the dissertation's core comparison — cannot be heard, cannot be scored on audio, and cannot be demonstrated. <code class="mono">hifigan</code> is a declared architecture in <code class="mono">src/train/config.py</code> and has configs at r06 and r17, but no entry in <code class="mono">ADAPTERS</code>. Nothing downstream moves until this is settled.</p>
+    <div class="opts" id="opts"></div>
+    <div id="decision-state" style="margin-top:6px"></div>
+  </div>
+</section>
+
+<section>
+  <div>
+    <p class="eyebrow">Sequence · ticks are saved</p>
+    <h2>Next steps</h2>
+    <p class="sub">Ordered by what unblocks the most. Items marked <span class="gate">gated</span> wait on something named in the item.</p>
+  </div>
+  <div class="card"><ul class="steps" id="steps"><li><span class="empty">Loading the sequence…</span></li></ul></div>
+</section>
+
+<section>
+  <div>
+    <p class="eyebrow">DGX terminal · one paste each</p>
+    <h2>Command blocks</h2>
+    <p class="sub">Each block is a single paste that does every independent thing at once and prints one report. Paste the whole block, then paste the output back into the chat. A terminal screenshot costs far more than pasted text.</p>
+  </div>
+  <div id="terms"></div>
+</section>
+
+<section>
+  <div>
+    <p class="eyebrow">19 configs on disk · 17 acoustic runs in the plan</p>
+    <h2>Run matrix</h2>
+    <p class="sub">Status is editable and shared. r06 and r17 are the vocoder pair and are cut if the pretrained route wins.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Run</th><th>Architecture</th><th>Lang</th><th>Input</th><th class="num">GPU-h</th><th>Slot</th><th>Status</th></tr></thead>
+      <tbody id="matrix"><tr><td colspan="7"><span class="empty">Loading the matrix…</span></td></tr></tbody>
+    </table>
+  </div>
+  <p class="note" id="matrix-note"></p>
+</section>
+
+<section>
+  <div>
+    <p class="eyebrow">Append only · never rewritten</p>
+    <h2>Findings and decisions</h2>
+    <p class="sub">Mirrors the discipline of <code class="mono">RESULTS.md</code> in the repo: every entry is dated and kept. Paste a measured number here the moment it exists, with the command that produced it.</p>
+  </div>
+  <div class="card">
+    <div class="log" id="log"><p class="empty">No entries yet. The first one should be the vocoder decision and its reason.</p></div>
+    <div class="addlog">
+      <textarea id="log-text" placeholder="e.g. r01 finished: 100,000 steps, final loss 298.1, checkpoint step_100000" aria-label="New log entry"></textarea>
+      <button class="primary" id="log-add">Append</button>
+    </div>
+    <p class="note" id="log-note" style="margin-top:9px"></p>
+  </div>
+</section>
+
+<footer>
+  <p>Repo <span class="mono">github.com/Klewik-Kanel/indic-tts-bench</span> · DGX <span class="mono">/workspace/indic-tts-bench</span>, auto-pulls every 30 s · Python <span class="mono">/workspace/venv/bin/python</span>, never the container's</p>
+  <p>Standing rule: no number reaches the paper that cannot be regenerated from a config file, and no difference smaller than the measured seed variance is reported as a finding. The variance floor is not yet measured.</p>
+  <p class="offline" id="conn"></p>
+</footer>
+
+</div>
+
+<script>
+const SEQ = [
+  {id:"s1", t:"Settle the vocoder question", d:"Both options are costed above. Everything on audio waits on it.", gate:""},
+  {id:"s2", t:"Pre-warm the Marathi feature cache", d:"5,160 utterances, both sample rates. Hindi took 1.7 min across 48 workers. CPU only, so it is safe to run beside training. Block 1 below.", gate:""},
+  {id:"s3", t:"Confirm r01 reached step 100,000", d:"Last seen at 87.6%. Block 1 prints its step count and checkpoint list.", gate:""},
+  {id:"s4", t:"Launch r15 + r18, the Marathi FS2 pair", d:"Slot 3. The next block that is blocked on nothing but the cache. 6.76 h wall clock for the pair.", gate:"gated on s2 and s3"},
+  {id:"s5", t:"Get VITS past one training step", d:"Four glue bugs fixed, still not past the loss call. Six of the runs depend on it. Block 3 reproduces the failure with CUDA_LAUNCH_BLOCKING=1.", gate:""},
+  {id:"s6", t:"Write ASR-WER, predicted MOS and RTF into src/eval/", d:"MCD and log-F0 exist and are verified against known answers. The other three are not written, and src/analysis/ is empty.", gate:"gated on s1"},
+  {id:"s7", t:"Measure the seed variance floor", d:"Two runs, same config, different seed. Until this number exists no difference can be called a finding.", gate:""},
+  {id:"s8", t:"Build the listening test", d:"listening_test/ is empty. Stimuli are low-passed to 8 kHz for every system so raters hear equal bandwidth.", gate:"gated on s1"},
+  {id:"s9", t:"Fix the four corrections owed to the written report", d:"FastSpeech 2 is 37.99 M parameters, not ~27 M. Precision is bf16, not fp16. The matrix is 19 configs. Two stale cross-references in sections 2.1.4 and 3.9.", gate:""}
+];
+
+const OPTS = [
+  {id:"train", h:"Option 1", name:"Write the adapter, train r06 + r17",
+   pros:["Every number in the paper comes from this project's own training.","The vocoder is matched to the speaker and to the 22.05 kHz master.","No deviation to declare in the methods table."],
+   cons:["No adapter exists yet; HiFi-GAN is the fourth to be written and the first with a discriminator.","The 7 h figure is a plan estimate that has never been measured.","Pushes the full matrix past Sunday."],
+   cost:"7.0 h GPU [unverified] + adapter time"},
+  {id:"pretrained", h:"Option 2", name:"Synthesise with a pretrained HiFi-GAN",
+   pros:["Audio exists today; evaluation and the listening test unblock immediately.","Frees exactly the 7.08 h by which the full matrix overruns Sunday.","The vocoder is shared by both arms of every comparison, so it cancels in the phonemic-vs-graphemic contrast."],
+   cons:["A deviation to declare in the methods table.","Speaker and language mismatch shifts absolute MCD. Untested here.","r06 and r17 drop out of the matrix."],
+   cost:"0 h GPU · 2 runs cut"}
+];
+
+const RUNS = [
+  {id:"r01", arch:"FastSpeech 2", lang:"Hindi", inp:"phonemic", h:6.8, slot:"now", st:"running"},
+  {id:"r02", arch:"VITS", lang:"Hindi", inp:"phonemic", h:6.8, slot:"1", st:"blocked"},
+  {id:"r03", arch:"Matcha-TTS", lang:"Hindi", inp:"phonemic", h:6.8, slot:"9", st:"queued"},
+  {id:"r04", arch:"FastSpeech 2", lang:"Hindi", inp:"graphemic", h:6.8, slot:"done", st:"done"},
+  {id:"r05", arch:"VITS", lang:"Hindi", inp:"graphemic", h:6.8, slot:"1", st:"blocked"},
+  {id:"r06", arch:"HiFi-GAN", lang:"Hindi", inp:"—", h:3.5, slot:"2", st:"blocked"},
+  {id:"r07", arch:"FastSpeech 2", lang:"Hindi", inp:"ladder 5 h", h:6.8, slot:"5", st:"queued"},
+  {id:"r08", arch:"FastSpeech 2", lang:"Hindi", inp:"ladder 1 h", h:6.8, slot:"6", st:"queued"},
+  {id:"r09", arch:"FastSpeech 2", lang:"Hindi", inp:"ladder 30 min", h:6.8, slot:"7", st:"queued"},
+  {id:"r10", arch:"FastSpeech 2", lang:"Hindi", inp:"ladder 10 min", h:6.8, slot:"8", st:"queued"},
+  {id:"r11", arch:"VITS", lang:"Hindi", inp:"ladder 5 h", h:6.8, slot:"5", st:"blocked"},
+  {id:"r12", arch:"VITS", lang:"Hindi", inp:"ladder 1 h", h:6.8, slot:"6", st:"blocked"},
+  {id:"r13", arch:"VITS", lang:"Hindi", inp:"ladder 30 min", h:6.8, slot:"7", st:"blocked"},
+  {id:"r14", arch:"VITS", lang:"Hindi", inp:"ladder 10 min", h:6.8, slot:"8", st:"blocked"},
+  {id:"r15", arch:"FastSpeech 2", lang:"Marathi", inp:"phonemic", h:6.8, slot:"3", st:"queued"},
+  {id:"r16", arch:"VITS", lang:"Marathi", inp:"phonemic", h:6.8, slot:"4", st:"blocked"},
+  {id:"r17", arch:"HiFi-GAN", lang:"Marathi", inp:"—", h:3.5, slot:"2", st:"blocked"},
+  {id:"r18", arch:"FastSpeech 2", lang:"Marathi", inp:"graphemic", h:6.8, slot:"3", st:"queued"},
+  {id:"r19", arch:"VITS", lang:"Marathi", inp:"graphemic", h:6.8, slot:"4", st:"blocked"}
+];
+
+const TERMS = [
+  {n:"Block 1", ttl:"Assess, and pre-warm Marathi",
+   why:"Answers four questions in one paste: did r01 finish, what is on the card, is the Marathi cache warm, and can the DGX reach Hugging Face for a pretrained vocoder. Then it warms the cache, which is CPU-only and safe beside a running job.",
+   cmd:`cd /workspace/indic-tts-bench && git log --oneline -1 && echo "=== status" && bash /workspace/status.sh && echo "=== r01 / r04 tail" && tail -n 3 /workspace/runs/r01.log /workspace/runs/r04.log && echo "=== checkpoints" && ls -1 /workspace/runs/r01 /workspace/runs/r04 2>&1 | tail -n 20 && echo "=== gpu" && nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv && nvidia-smi --query-compute-apps=pid,used_memory --format=csv && echo "=== marathi cache before" && du -sh /workspace/features/marathi* 2>&1 | tail -n 5 && echo "=== hub reachable?" && /workspace/venv/bin/python -c "import urllib.request,json; r=urllib.request.urlopen('https://huggingface.co/api/models?search=hifigan&limit=5',timeout=20); print([m['modelId'] for m in json.load(r)])" 2>&1 | tail -n 3 && echo "=== prewarm 22050 (pitch)" && /workspace/venv/bin/python scripts/12_prewarm_features.py --lang marathi --sr 22050 --pitch 2>&1 | tail -n 6 && echo "=== prewarm 16000" && /workspace/venv/bin/python scripts/12_prewarm_features.py --lang marathi --sr 16000 2>&1 | tail -n 6 && echo "=== marathi cache after" && du -sh /workspace/features/marathi* 2>&1 | tail -n 5 && echo "=== BLOCK 1 DONE"`},
+  {n:"Block 2", ttl:"Launch the Marathi FS2 pair, r15 + r18",
+   why:"Run only once Block 1 shows r01 at step 100,000 and the Marathi cache warm. The pairing is deliberate: both arms of one ablation share the card, so neither arm gets a wall clock the other did not. It prints the status 90 s later so a crash shows up now and not in six hours.",
+   cmd:`cd /workspace/indic-tts-bench && for R in r15 r18; do TRAIN_GPU_FRACTION=0.25 nohup /workspace/venv/bin/python -m src.train.launch configs/$R.yaml --out /workspace/runs/$R --ckpt-every 5000 --log-every 100 > /workspace/runs/$R.log 2>&1 & echo "launched $R pid $!"; done; sleep 90 && echo "=== status" && bash /workspace/status.sh && echo "=== first lines" && tail -n 12 /workspace/runs/r15.log /workspace/runs/r18.log && echo "=== gpu" && nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv && echo "=== BLOCK 2 DONE"`},
+  {n:"Block 3", ttl:"Reproduce the VITS failure, readably",
+   why:"CUDA_LAUNCH_BLOCKING=1 moves a device-side assert back to the Python frame that caused it; without it the traceback names no tensor. The dry run is two steps on the CPU path first, so a layout bug shows as a shape error rather than an unreadable assert. Paste the whole traceback, not the last line.",
+   cmd:`cd /workspace/indic-tts-bench && echo "=== adapters registered" && /workspace/venv/bin/python -c "from src.train import adapters; print(sorted(adapters.ADAPTERS))" && echo "=== r02 dryrun, 2 steps" && CUDA_LAUNCH_BLOCKING=1 /workspace/venv/bin/python -m src.train.dryrun configs/r02.yaml --steps 2 2>&1 | tail -n 60 && echo "=== r05 dryrun, 2 steps" && CUDA_LAUNCH_BLOCKING=1 /workspace/venv/bin/python -m src.train.dryrun configs/r05.yaml --steps 2 2>&1 | tail -n 40 && echo "=== tests" && /workspace/venv/bin/python -m pytest -q 2>&1 | tail -n 15 && echo "=== BLOCK 3 DONE"`}
+];
+
+/* ---------- static render ---------- */
+function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e}
+
+function renderClock(){
+  const t=document.getElementById("c-clock");
+  const dl=Date.parse("2026-10-05T23:59:00+05:30");
+  const h=(dl-Date.now())/36e5;
+  t.textContent=(h>0?h.toFixed(1):"0")+" h";
+  document.getElementById("c-clock").title="Monday 5 October 2026, 23:59 IST";
+}
+renderClock(); setInterval(renderClock,60000);
+
+function renderTerms(){
+  const host=document.getElementById("terms");
+  host.innerHTML="";
+  const col=el("div");col.style.display="flex";col.style.flexDirection="column";col.style.gap="14px";
+  TERMS.forEach(b=>{
+    const w=el("div","term");
+    const bar=el("div","bar");
+    const left=el("div");left.style.minWidth="0";
+    left.append(el("div","lbl",b.n),el("div","ttl",b.ttl));
+    const btn=el("button",null,"Copy");
+    btn.addEventListener("click",async()=>{
+      try{await navigator.clipboard.writeText(b.cmd);btn.textContent="Copied";}
+      catch(e){const r=document.createRange();r.selectNodeContents(pre);const s=getSelection();s.removeAllRanges();s.addRange(r);btn.textContent="Selected";}
+      setTimeout(()=>btn.textContent="Copy",1800);
+    });
+    bar.append(left,btn);
+    const pre=el("pre",null,b.cmd);
+    w.append(bar,pre,el("div","why",b.why));
+    col.append(w);
+  });
+  host.append(col);
+}
+renderTerms();
+
+function renderMatrix(statuses){
+  const tb=document.getElementById("matrix");tb.innerHTML="";
+  RUNS.forEach(r=>{
+    const st=statuses[r.id]||r.st;
+    const tr=el("tr");if(st==="blocked")tr.className="blocked";
+    tr.append(el("td","id",r.id),el("td",null,r.arch),el("td",null,r.lang),el("td",null,r.inp),
+      el("td","num",r.h.toFixed(1)),el("td","num",r.slot));
+    const tdS=el("td");
+    const pill=el("span","pill "+st,st);
+    const sel=document.createElement("select");
+    sel.id="st-"+r.id;
+    sel.setAttribute("aria-label","Status for "+r.id);
+    ["queued","running","done","blocked","cut"].forEach(v=>{
+      const o=document.createElement("option");o.value=v;o.textContent=v;if(v===st)o.selected=true;sel.append(o);});
+    sel.addEventListener("change",()=>setStatus(r.id,sel.value));
+    tdS.append(pill);tdS.append(document.createTextNode(" "));tdS.append(sel);
+    if(!DB)sel.disabled=true;
+    tr.append(tdS);tb.append(tr);
+  });
+  const done=RUNS.filter(r=>(statuses[r.id]||r.st)==="done"&&r.arch!=="HiFi-GAN").length;
+  const acoustic=RUNS.filter(r=>r.arch!=="HiFi-GAN").length;
+  const left=RUNS.filter(r=>{const s=statuses[r.id]||r.st;return s!=="done"&&s!=="cut"});
+  const gpu=left.reduce((a,r)=>a+r.h,0);
+  const blocked=left.filter(r=>(statuses[r.id]||r.st)==="blocked").length;
+  document.getElementById("c-runs").innerHTML=done+'<small> / '+acoustic+'</small>';
+  document.getElementById("c-runs-n").textContent=acoustic+" acoustic, 100,000 steps each";
+  document.getElementById("c-gpu").textContent=gpu.toFixed(1)+" h";
+  document.getElementById("c-gpu-n").textContent=left.length+" runs not done, paired where possible";
+  document.getElementById("c-block").textContent=blocked;
+  document.getElementById("c-block-n").textContent=blocked?"runs waiting on an adapter":"nothing waiting on an adapter";
+  document.getElementById("matrix-note").textContent=
+    "Sum of the runs still to do: "+gpu.toFixed(1)+" GPU-h. Paired two to a card at 6.76 h per pair, the schedulable wall clock is 54.1 h for the 15 acoustic runs that remain, plus the vocoder pair if it is kept.";
+}
+
+function renderSteps(state){
+  const ul=document.getElementById("steps");ul.innerHTML="";
+  SEQ.forEach(s=>{
+    const done=!!state[s.id];
+    const li=el("li",done?"done":"");
+    const cb=document.createElement("input");cb.type="checkbox";cb.checked=done;cb.id="cb-"+s.id;
+    cb.setAttribute("aria-label",s.t);
+    cb.addEventListener("change",()=>setStep(s.id,cb.checked));
+    if(!DB)cb.disabled=true;
+    const tx=el("div","txt");
+    tx.append(el("div","t",s.t));
+    if(s.gate)tx.append(el("div","gate",s.gate));
+    tx.append(el("div","d",s.d));
+    li.append(cb,tx);ul.append(li);
+  });
+}
+
+function renderOpts(choice){
+  const host=document.getElementById("opts");host.innerHTML="";
+  OPTS.forEach(o=>{
+    const d=el("div","opt"+(choice===o.id?" picked":""));
+    d.append(el("h3",null,o.h),el("div","name",o.name));
+    const ul=el("ul");
+    o.pros.forEach(p=>ul.append(el("li",null,p)));
+    o.cons.forEach(p=>{const li=el("li",null,p);li.style.color="var(--crit)";ul.append(li)});
+    d.append(ul,el("div","cost",o.cost));
+    const b=el("button",choice===o.id?"primary":null,choice===o.id?"Recorded":"Record this");
+    if(!DB)b.disabled=true;
+    b.addEventListener("click",()=>setDecision(o.id));
+    d.append(b);
+    host.append(d);
+  });
+  const s=document.getElementById("decision-state");s.innerHTML="";
+  if(choice){
+    const o=OPTS.find(x=>x.id===choice);
+    const line=el("div","decided");
+    line.append(el("span",null,"Recorded: "+(o?o.name:choice)));
+    s.append(line);
+  }else{
+    s.append(el("p","note","Not yet recorded. Recording it writes an entry into the log below, so the reason survives the session."));
+  }
+}
+
+/* ---------- state ---------- */
+let DB=null, STATE={steps:{},runs:{},choice:null,log:[]};
+renderOpts(null);renderSteps({});renderMatrix({});
+document.getElementById("conn").textContent="Shared state connecting…";
+
+function fmt(ts){
+  const d=new Date(ts);
+  return d.toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Kolkata"})+" IST";
+}
+function renderLog(){
+  const host=document.getElementById("log");host.innerHTML="";
+  if(!STATE.log.length){host.append(el("p","empty","No entries yet. The first one should be the vocoder decision and its reason."));return}
+  STATE.log.slice().sort((a,b)=>b.ts-a.ts).forEach(e=>{
+    const w=el("div","entry");
+    const t=el("time",null,fmt(e.ts));
+    w.append(t,el("div","body",e.text));
+    host.append(w);
+  });
+}
+
+async function boot(){
+  const db = await (window.claude?.use ? claude.use("db") : Promise.resolve(null));
+  if(!db){
+    document.getElementById("conn").textContent="Shared state unavailable in this view. The board reads as a plan; ticks and entries are not saved.";
+    document.getElementById("log-note").textContent="Sign in to the artifact's organisation to append entries.";
+    return;
+  }
+  DB=db;
+  document.getElementById("conn").textContent="Shared state connected. Ticks, statuses and log entries are saved and visible to anyone with the link.";
+  document.getElementById("log-note").textContent="Entries are append-only here, the same rule RESULTS.md follows.";
+  try{
+    db.collection("steps").onSnapshot(s=>{
+      STATE.steps={};s.docs.forEach(d=>STATE.steps[d.id]=!!(d.data()||{}).done);renderSteps(STATE.steps);
+    });
+    db.collection("runs").onSnapshot(s=>{
+      STATE.runs={};s.docs.forEach(d=>{const v=(d.data()||{}).status;if(v)STATE.runs[d.id]=v});renderMatrix(STATE.runs);
+    });
+    db.collection("log").onSnapshot(s=>{
+      STATE.log=s.docs.map(d=>{const v=d.data()||{};return {ts:v.ts||0,text:v.text||""}});renderLog();
+    });
+    db.doc("decisions/vocoder").onSnapshot(d=>{
+      STATE.choice=((d&&d.data&&d.data())||{}).choice||null;renderOpts(STATE.choice);
+    });
+  }catch(e){
+    document.getElementById("conn").textContent="Shared state did not subscribe: "+(e&&e.code||e&&e.message||"unknown");
+  }
+}
+async function setStep(id,v){
+  if(!DB)return;
+  try{await DB.collection("steps").doc(id).set({done:!!v,at:Date.now()})}catch(e){}
+}
+async function setStatus(id,v){
+  if(!DB)return;
+  try{await DB.collection("runs").doc(id).set({status:v,at:Date.now()})}catch(e){}
+}
+async function append(text){
+  if(!DB||!text.trim())return;
+  const id="e"+Date.now();
+  try{await DB.collection("log").doc(id).set({ts:Date.now(),text:text.trim()})}catch(e){}
+}
+async function setDecision(id){
+  if(!DB)return;
+  const o=OPTS.find(x=>x.id===id);
+  try{
+    await DB.doc("decisions/vocoder").set({choice:id,at:Date.now()});
+    await append("Vocoder decision recorded: "+(o?o.name:id)+". "+(o?o.cost:""));
+  }catch(e){}
+}
+document.getElementById("log-add").addEventListener("click",async()=>{
+  const ta=document.getElementById("log-text");
+  const v=ta.value;if(!v.trim())return;
+  ta.value="";await append(v);
+});
+boot();
+</script>
