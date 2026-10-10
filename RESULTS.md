@@ -1987,3 +1987,73 @@ intelligibility proxy rank these two systems in opposite orders, which is the
 same lesson as the mel-cepstral distortion result in the other direction: a
 measure that cannot resolve a contrast is not evidence about the contrast, and
 a measure that ranks confidently is not thereby measuring what you want.
+
+## 10 October: FastSpeech 2 retried with pitch and energy z-scored, as r24 and r25
+
+**Decision (Kaustubh, 10 October).** Option A of `handoff/07-FUTURE-PLAN.md`
+§3: retrain the Hindi FastSpeech 2 pair only, with coqui's normalisation
+restored, as a labelled objective variant. r01 and r04 keep their weights,
+their hashes and their place in this record. The other eight FastSpeech 2 runs
+(r07–r10, r15, r18, r20, r21) are not retrained.
+
+**What changed.** A new config field, `variance_norm`, with values `""` (as
+trained, r01 to r21) and `"zscore"`. With `zscore`, `FastSpeech2Adapter.collate`
+hands the loss pitch and energy as `(x - mean) / std` over non-zero values,
+zeros left at zero, with mean and standard deviation over the non-zero frames
+of the run's own training rung. That is coqui-tts 0.27.5's
+`F0Dataset.normalize` and `EnergyDataset.normalize` rule, transcribed and
+tested against. The statistics are computed once per process from the feature
+cache and printed to the run log, so a resumed run recomputes the same numbers.
+Inference needs no statistics: the model embeds its own predicted, already
+normalised pitch and energy.
+
+    run  parent  input     variance_norm  config_hash
+    r24  r01     phoneme   zscore         ff8f90098954
+    r25  r04     grapheme  zscore         3d5e38617eba
+
+Each differs from its parent in `variance_norm`, one declared deviation, the
+run id and the note, and nothing else. `variance_norm` is left out of the hash
+and out of the YAML at its default, so all 23 earlier configs keep the hash
+they trained under and their files are byte-identical.
+`tests/test_variance_norm.py`, 35 cases, checks both against literal hashes
+rather than recomputed ones, and runs the adapter path on synthetic pitch in
+hertz.
+
+**What coqui-tts 0.27.5 actually computes, read from the released wheel today
+rather than remembered.** Four points bear on the 3 October section above.
+
+1. **Correction: the mel term is a mean squared error, not an L1.** The adapter
+   builds `Fastspeech2Config()` and never sets `spec_loss_type`, whose default
+   is `"mse"`. The 3 October table measured "mel L1 vs mean predictor" at
+   1.814, which is not the term as trained. The 0.58% mel share of r01's loss
+   rests on that figure and is therefore `[Unverified]` until it is read from
+   the logged `components` of r20 or r21, which hold the actual `loss_spec`.
+   The direction is not in doubt on the other figures: the pitch term of a
+   mean predictor was measured in the hundreds.
+2. **Six terms are applied, not five:** mel (1.0), duration (0.1), pitch (0.1),
+   energy (0.1), aligner forward-sum (1.0) and binary alignment (0.1). SSIM is
+   switched on in the config and never applied, because `ForwardTTSLoss`
+   stores it as `self.ssim` and tests `hasattr(self, "ssim_loss")`.
+3. **Pitch and energy are scored per token, not per frame.** The loss compares
+   `pitch_avg` against `pitch_avg_gt`, which `average_over_durations` takes over
+   each token's non-zero frames. The 3 October variances were per frame, so the
+   absolute sizes in that table are not the trained terms either.
+4. **`binary_loss_weight` only scales the logged value.** The binary alignment
+   term enters the loss at its full alpha from step 0 whether or not
+   `on_train_step_start` is called. The harness not calling it changes a log
+   field and nothing that trains.
+
+**Correction to the predicted mel share after normalising.** The 90.07% of
+3 October (1.814 / (1.814 + 2 × 0.1)) left out the duration, aligner and binary
+alignment terms, and used the L1 figure. It overstates the share by an amount
+not yet known. `[Unverified]` until read from r24's own `components`.
+
+**What this does and does not promise.** `[Inference]` With pitch and energy at
+unit scale, the mel term should carry a large share of the objective and r24
+should produce intelligible speech at the nine-hour rung. That is expected, not
+guaranteed. The other things that could still hold FastSpeech 2 back are
+unchanged and unmeasured here: `grad_clip 1.0` against gradient norms of 97 to
+1139 (blocker b16), the internal aligner, and mel over-smoothing under an MSE
+objective. So the check is the measurement, not the argument: a bundle at step
+20,000 is scored on 10 test utterances before the run is trusted, and the
+verdict is the character error rate against r01's 0.9932.

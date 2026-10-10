@@ -468,6 +468,7 @@ def train(cfg: dict, adapter: ModelAdapter, *, out_dir: pathlib.Path | None = No
 STRING_KEYS = frozenset({
     "config_hash", "run_id", "architecture", "language", "input_repr", "data",
     "init_from", "precision", "lr_schedule", "aligner", "vocoder", "notes",
+    "variance_norm",
 })
 
 # Strict, so a hex string is never mistaken for a number. A float needs a

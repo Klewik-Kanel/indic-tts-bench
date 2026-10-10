@@ -27,6 +27,11 @@ from .text import TextEncoder
 HERE = pathlib.Path(__file__).resolve().parents[2]
 INTERIM = HERE / "data" / "interim"
 
+# Guards FastSpeech2Adapter's one-off statistics pass, which runs inside
+# collate on the prefetch thread.
+import threading as _threading
+_VARIANCE_LOCK = _threading.Lock()
+
 
 # --- mel features ----------------------------------------------------------
 
@@ -149,6 +154,12 @@ class AdapterBase:
     # adapter that never records one still answers the loop's question.
     last_components: dict = {}
 
+    @staticmethod
+    def _cache_root(cfg) -> pathlib.Path:
+        """The feature cache for this language; see the note in _features."""
+        return pathlib.Path(os.environ.get("TRAIN_CACHE_ROOT")
+                            or (HERE / "data" / "cache")) / cfg["language"]
+
     def _features(self, batch, cfg):
         import numpy as np
         from . import features as F
@@ -163,8 +174,7 @@ class AdapterBase:
         # holds the same arrays for the same inputs or it holds nothing and they
         # are recomputed. Like TRAIN_GPU_FRACTION and TRAIN_THREADS it is a
         # scheduling knob and not part of the budget.
-        root = pathlib.Path(os.environ.get("TRAIN_CACHE_ROOT")
-                            or (HERE / "data" / "cache")) / cfg["language"]
+        root = self._cache_root(cfg)
         return [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
                                   want_pitch=self.want_pitch,
                                   keys=self.needs or None) for u in batch]
@@ -353,6 +363,58 @@ class FastSpeech2Adapter(CoquiAdapter):
     name = "fastspeech2"
     want_pitch = True
     needs = ("mel", "pitch", "energy")        # never spec, never wav
+    variance_stats: dict | None = None
+
+    def _variance_stats(self, cfg) -> dict:
+        """Pitch and energy statistics over this run's own training rung.
+
+        Only for variance_norm: zscore. Computed from the feature cache on the
+        first batch and held for the life of the process. It is a pure
+        function of the manifest and the cached features, so a resumed run
+        recomputes exactly the same numbers and bit-exact resume is untouched.
+        Called from collate, which runs on the prefetch thread, hence the lock.
+        Never called at synthesis: inference embeds the model's own predicted,
+        already-normalised pitch and energy, so a bundle needs no statistics.
+        """
+        from . import features as F
+        with _VARIANCE_LOCK:
+            if self.variance_stats is not None:
+                return self.variance_stats
+            sr = int(cfg["sample_rate"])
+            mpath = (HERE / "data" / "processed" / cfg["language"] /
+                     ("train.tsv" if cfg["data"] == "train"
+                      else f"ladder/{cfg['data']}.tsv"))
+            utts = batching.load_manifest(mpath, sr)
+            root = self._cache_root(cfg)
+            feats = [F.load_or_compute(INTERIM / cfg["language"] / u.wav, sr, root,
+                                       want_pitch=True, keys=("pitch", "energy"))
+                     for u in utts]
+            pm, ps, pn = F.nonzero_stats([f["pitch"] for f in feats])
+            em, es, en = F.nonzero_stats([f["energy"] for f in feats])
+            stats = {"manifest": f"{cfg['language']}/{mpath.name}"
+                                 if cfg["data"] == "train"
+                                 else f"{cfg['language']}/ladder/{mpath.name}",
+                     "utterances": len(utts),
+                     "pitch_mean": pm, "pitch_std": ps, "pitch_frames": pn,
+                     "energy_mean": em, "energy_std": es, "energy_frames": en}
+            print(f"{cfg['run_id']}: variance_norm zscore, statistics "
+                  f"{json.dumps(stats, sort_keys=True)}", flush=True)
+            self.variance_stats = stats
+            return stats
+
+    def _variance_targets(self, feats, cfg):
+        """Pitch and energy as the loss should see them, per the config."""
+        from . import features as F
+        pitch = [f["pitch"] for f in feats]
+        energy = [f["energy"] for f in feats]
+        mode = cfg.get("variance_norm") or ""
+        if mode == "":
+            return pitch, energy          # r01 to r21: physical units, as trained
+        if mode != "zscore":
+            raise SystemExit(f"{cfg['run_id']}: unknown variance_norm {mode!r}")
+        st = self._variance_stats(cfg)
+        return ([F.zscore_nonzero(p, st["pitch_mean"], st["pitch_std"]) for p in pitch],
+                [F.zscore_nonzero(e, st["energy_mean"], st["energy_std"]) for e in energy])
 
     def build(self, vocab_size: int, cfg: dict):
         from TTS.tts.configs.fastspeech2_config import Fastspeech2Config
@@ -380,6 +442,7 @@ class FastSpeech2Adapter(CoquiAdapter):
         feats = self._features(batch, cfg)
         ids = pad_ids([enc.encode(u.text) for u in batch])
         mels = pad_stack([f["mel"] for f in feats])
+        pitch, energy = self._variance_targets(feats, cfg)
         return {
             "text_input": torch.from_numpy(ids),
             "text_lengths": torch.tensor([len(enc.encode(u.text)) for u in batch]),
@@ -389,10 +452,8 @@ class FastSpeech2Adapter(CoquiAdapter):
             # the last axis as time; with the axes swapped its cumulative-sum
             # arithmetic runs past the end and the only symptom is a CUDA
             # device-side assert inside a gather kernel.
-            "pitch": torch.from_numpy(
-                pad_stack([f["pitch"] for f in feats])).unsqueeze(1),
-            "energy": torch.from_numpy(
-                pad_stack([f["energy"] for f in feats])).unsqueeze(1),
+            "pitch": torch.from_numpy(pad_stack(pitch)).unsqueeze(1),
+            "energy": torch.from_numpy(pad_stack(energy)).unsqueeze(1),
             "durations": None,                 # the aligner supplies them
             "speaker_ids": None,               # one speaker per language
             "d_vectors": None,

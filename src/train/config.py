@@ -51,6 +51,13 @@ ARCHITECTURES = ("fastspeech2", "vits", "matcha", "hifigan")
 LANGUAGES = ("hindi", "marathi")
 INPUT_REPRS = ("phoneme", "grapheme", "none")
 
+# How FastSpeech 2's pitch and energy targets are scaled before they reach
+# ForwardTTSLoss. "" is what r01 to r21 trained with: f0 in hertz and frame
+# energy as a raw L2 norm. "zscore" is coqui's own dataset convention. See
+# VARIANCE_NOTE. Only FastSpeech 2 has a variance adaptor, so only it may set
+# this.
+VARIANCE_NORMS = ("", "zscore")
+
 # The shared budget. Every acoustic-model run gets these, and the paper's claim
 # rests on them being identical, so they are defined once here.
 BUDGET = {
@@ -104,6 +111,7 @@ class RunConfig:
     merge_nukta: bool = False
     aligner: str = "internal_mas"   # see ALIGNER_NOTE below
     vocoder: str = ""               # "" for end-to-end architectures
+    variance_norm: str = ""         # see VARIANCE_NORMS and VARIANCE_NOTE
     deviations: tuple[str, ...] = ()
     # Claims in `deviations` or `init_from` later found to be false. Outside the
     # hash by design; see the module docstring.
@@ -121,6 +129,11 @@ class RunConfig:
             raise ValueError(f"{self.run_id}: a vocoder takes no text input")
         if self.architecture != "hifigan" and self.input_repr == "none":
             raise ValueError(f"{self.run_id}: an acoustic model needs an input representation")
+        if self.variance_norm not in VARIANCE_NORMS:
+            raise ValueError(f"{self.run_id}: unknown variance_norm {self.variance_norm!r}")
+        if self.variance_norm and self.architecture != "fastspeech2":
+            raise ValueError(f"{self.run_id}: variance_norm applies to FastSpeech 2 "
+                             f"only, not {self.architecture}")
 
     # -- data ---------------------------------------------------------------
 
@@ -142,6 +155,11 @@ class RunConfig:
         d = dataclasses.asdict(self)
         for k in COSMETIC:
             d.pop(k, None)
+        # Added on 10 October, after 23 runs had trained. Left out of the hash at
+        # its default so that every one of those runs keeps the hash it trained
+        # under; a run that sets it hashes it like any other field.
+        if not d.get("variance_norm"):
+            d.pop("variance_norm", None)
         d["deviations"] = sorted(d.get("deviations") or ())
         return d
 
@@ -157,6 +175,8 @@ class RunConfig:
             f"config_hash: {self.config_hash()}",
         ]
         for k, v in d.items():
+            if k == "variance_norm" and not v:
+                continue          # keeps the 23 earlier YAML files byte-identical
             if isinstance(v, (tuple, list)):
                 if not v:
                     lines.append(f"{k}: []")
@@ -187,6 +207,24 @@ def assert_budget_matched(runs: list[RunConfig]) -> None:
                 f"budget field {field_name!r} is not identical across runs: "
                 f"{sorted(got)}; the fixed-budget claim would be false"
             )
+
+
+VARIANCE_NOTE = """FastSpeech 2's pitch and energy targets are z-scored in r24
+and r25, and in no earlier run.
+
+coqui's ForwardTTSLoss adds a mel term to mean squared errors on pitch and on
+energy, each at alpha 0.1. coqui's own dataset classes z-score both before they
+reach the loss (F0Dataset.normalize and EnergyDataset.normalize: mean and
+standard deviation over the non-zero values, zeros left at zero). This project
+does not use those classes, so r01 to r21 trained on f0 in hertz and on a raw
+frame-energy norm. Measured on 3 October, the pitch term then dominates the
+objective and the mel decoder receives under one per cent of it, which is a
+sufficient explanation for r01 and r04 transcribing at the CER ceiling.
+
+r24 and r25 are r01 and r04 with that convention restored, statistics taken
+over the run's own training rung. They are a labelled objective variant, not a
+replacement: r01 and r04 keep their weights, their hashes and their place in
+the record. The ten earlier FastSpeech 2 runs are not retrained."""
 
 
 CONTROL_NOTE = """The Marathi control needs two arms, not one.
@@ -385,6 +423,21 @@ def plan_runs() -> list[RunConfig]:
                           input_repr="grapheme", data="9h", vocoder="hifigan_hindi",
                           notes="the ablation arm; differs from r01 only in input"))
     runs.append(vits("r05", "hindi", "grapheme", "9h"))
+
+    # Objective variant of the Hindi FastSpeech 2 pair, added 10 October. Each
+    # differs from its parent only in variance_norm and the deviation that
+    # declares it. See VARIANCE_NOTE.
+    zdev = ("pitch and energy targets z-scored over the training rung's "
+            "non-zero frames, coqui's dataset convention; r01 and r04 trained "
+            "on f0 in hertz and raw frame energy",)
+    runs.append(RunConfig(run_id="r24", architecture="fastspeech2", language="hindi",
+                          input_repr="phoneme", data="9h", vocoder="hifigan_hindi",
+                          variance_norm="zscore", deviations=zdev,
+                          notes="r01 with pitch and energy z-scored; see VARIANCE_NOTE"))
+    runs.append(RunConfig(run_id="r25", architecture="fastspeech2", language="hindi",
+                          input_repr="grapheme", data="9h", vocoder="hifigan_hindi",
+                          variance_norm="zscore", deviations=zdev,
+                          notes="r04 with pitch and energy z-scored; see VARIANCE_NOTE"))
 
     # Vocoder, shared by the non-end-to-end architectures
     runs.append(RunConfig(run_id="r06", architecture="hifigan", language="hindi",

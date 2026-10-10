@@ -151,3 +151,45 @@ def load_or_compute(wav_path: pathlib.Path, sr: int, root: pathlib.Path,
     np.savez(tmp, **d)
     tmp.rename(p)                       # atomic: a killed job leaves no half file
     return d
+
+
+# --- pitch and energy scaling, for FastSpeech 2's variance adaptor ---------
+#
+# coqui's ForwardTTSLoss takes pitch and energy as targets for a mean squared
+# error at alpha 0.1. coqui's own dataset classes z-score both first; this
+# project does not use those classes, so r01 to r21 trained on raw values and
+# the pitch term swamped the mel term. These two functions restore coqui's
+# convention exactly, for runs whose config sets variance_norm: zscore. See
+# VARIANCE_NOTE in src/train/config.py.
+
+def nonzero_stats(arrays) -> tuple[float, float, int]:
+    """Mean and standard deviation over the non-zero values of all arrays.
+
+    Same rule as coqui's F0Dataset.compute_pitch_stats and
+    EnergyDataset.compute_energy_stats: zeros mark unvoiced or silent frames
+    and are excluded, and the deviation is the population one (np.std's
+    default). Returns the count too, so the caller can record what the
+    statistics rest on.
+    """
+    import numpy as np
+    vals = np.concatenate([np.asarray(a, dtype="float64").ravel() for a in arrays])
+    nz = vals[vals != 0.0]
+    if nz.size == 0:
+        raise ValueError("no non-zero values to take statistics over")
+    std = float(np.std(nz))
+    if not std > 0.0:
+        raise ValueError(f"standard deviation is {std}; cannot z-score")
+    return float(np.mean(nz)), std, int(nz.size)
+
+
+def zscore_nonzero(a, mean: float, std: float):
+    """(a - mean) / std on non-zero entries, zeros left at zero.
+
+    Same rule as coqui's F0Dataset.normalize. Returns a new float32 array and
+    never modifies `a`, which may be an array read straight from the cache.
+    """
+    import numpy as np
+    a = np.asarray(a, dtype="float32")
+    out = ((a - np.float32(mean)) / np.float32(std)).astype("float32")
+    out[a == 0.0] = 0.0
+    return out
